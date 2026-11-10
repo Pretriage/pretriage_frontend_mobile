@@ -853,7 +853,7 @@ private fun EstadoConsultaSection(
                                      */
 
                                     Column(
-                                        modifier = Modifier.weight(1f),
+                                        modifier = Modifier.fillMaxWidth(),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
 
@@ -904,43 +904,6 @@ private fun EstadoConsultaSection(
                                     }
 
 
-                                    Box(
-                                        modifier = Modifier.width(1.dp)
-                                                .height(58.dp)
-                                                .background(
-                                                    Color(0xFFE0E0E0)
-                                                )
-                                    )
-
-
-                                    /*
-                                     * PACIENTES ANTES
-                                     */
-
-                                    Column(
-                                        modifier = Modifier.weight(1f),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        Text(
-                                            text = "Pacientes antes que vos",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            textAlign = TextAlign.Center
-                                        )
-
-                                        Spacer(
-                                            modifier = Modifier.height(4.dp)
-                                        )
-
-
-                                        Text(
-                                            text = "${tiempoEstimado.pacientesAntes}",
-                                            style = MaterialTheme.typography.headlineSmall,
-                                            fontWeight = FontWeight.Bold,
-
-                                            color = ACCENT
-                                        )
-                                    }
                                 }
 
 
@@ -1462,7 +1425,9 @@ private fun EstadoConsultaSection(
         Row(
 
             modifier =
-                Modifier.fillMaxWidth(),
+                Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
 
             horizontalArrangement =
                 Arrangement.spacedBy(8.dp)
@@ -1484,7 +1449,9 @@ private fun EstadoConsultaSection(
                     onComoLlegar,
 
                 modifier =
-                    Modifier.weight(1f)
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
             )
 
 
@@ -1504,7 +1471,9 @@ private fun EstadoConsultaSection(
                     onChatInteractivo,
 
                 modifier =
-                    Modifier.weight(1f)
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
             )
         }
 
