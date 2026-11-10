@@ -7,6 +7,9 @@ import com.proyecto_final.triage.network.siguienteEsperaMs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
+internal fun ChatUiState.aplicarAvisoUrgenteVoz(idChatVoz: Long, mensaje: String): ChatUiState =
+    if (chatId == idChatVoz && avisoUrgenteVoz == null) copy(avisoUrgenteVoz = mensaje) else this
+
 internal fun ChatUiState.esperandoResultadoCierre(): Boolean = finalizado &&
     !estadoClasificacion.equals("PARCIAL", ignoreCase = true) &&
     (estadoClasificacion.isNullOrBlank() || estadoClasificacion.equals("PENDIENTE", ignoreCase = true))

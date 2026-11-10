@@ -1612,7 +1612,7 @@ private fun EstadoConsultaSection(
             )
 
             BotonCeleste(
-                texto = "Volver a Inicio",
+                texto = "Volver a inicio",
                 icono = Icons.AutoMirrored.Filled.ArrowBack,
                 loading = false,
                 onClick = onBack
@@ -1660,7 +1660,7 @@ fun CardConCountDown(
                     Modifier.height(16.dp)
             )
             Text(
-                text = "El tiempo de espera expiró, tu turno fue cancelado.",
+                    text = "El tiempo de espera expiró. Tu turno fue cancelado.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
                 textAlign = TextAlign.Left,

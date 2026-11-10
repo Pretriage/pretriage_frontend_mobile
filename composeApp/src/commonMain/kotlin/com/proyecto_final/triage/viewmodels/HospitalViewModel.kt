@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 
 enum class OrdenHospital(val apiValue: String?, val label: String) {
     DISTANCIA(null, "Distancia"),
-    TIEMPO_ATENCION("tiempo-atencion", "Tiempo de atención"),
+    TIEMPO_ATENCION("tiempo-atencion", "Menor espera estimada"),
     MEJOR_VALORADOS("valoracion", "Mejor valorados")
 }
 

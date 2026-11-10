@@ -337,7 +337,7 @@ fun HomeContent(
                 Text(
 
                     text =
-                        "Hola!",
+                        "¡Hola!",
 
                     style =
                         MaterialTheme.typography
@@ -359,7 +359,7 @@ fun HomeContent(
                 Text(
 
                     text =
-                        "¿Como podemos ayudarte?",
+                        "¿Cómo podemos ayudarte?",
 
                     style =
                         MaterialTheme.typography

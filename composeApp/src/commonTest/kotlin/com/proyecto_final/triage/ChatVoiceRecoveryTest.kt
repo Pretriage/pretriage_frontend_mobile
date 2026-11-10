@@ -20,6 +20,63 @@ class ChatVoiceRecoveryTest {
         finalizado = true, estadoClasificacion = "PENDIENTE")
 
     @Test
+    fun avisoUrgenteTieneUnEventoPropioYExigeUnMensajeVisible() {
+        assertEquals(
+            EventoVoz.AvisoUrgente("Andá a una guardia."),
+            parsearEventoVoz("""{"tipo":"aviso_urgente","mensaje":"Andá a una guardia."}""")
+        )
+        assertNull(parsearEventoVoz("""{"tipo":"aviso_urgente"}"""))
+        assertNull(parsearEventoVoz("""{"tipo":"aviso_urgente","mensaje":" "}"""))
+    }
+
+    @Test
+    fun avisoUrgentePermaneceDuranteCierreRecuperacionYFalloDelMismoChat() {
+        val mensaje = "Andá a una guardia."
+        val activa = ChatUiState(chatId = 37, mensajes = mensajes, estadoVoz = EstadoVoz.ESCUCHANDO)
+        assertEquals(activa, activa.aplicarAvisoUrgenteVoz(36, mensaje))
+
+        val avisada = activa.aplicarAvisoUrgenteVoz(37, mensaje)
+        assertEquals(EstadoVoz.ESCUCHANDO, avisada.estadoVoz)
+        assertEquals(mensajes, avisada.mensajes)
+        assertFalse(avisada.finalizado)
+        assertEquals(avisada, avisada.aplicarAvisoUrgenteVoz(37, mensaje))
+
+        val pendiente = avisada.aplicarActualizacionTrasVoz(
+            ChatResponse(37, mensajes, finalizado = true, estadoClasificacion = "PENDIENTE",
+                estadoRecuperacion = "REINTENTANDO", versionEstado = 1)
+        )
+        val fallida = pendiente.aplicarActualizacionTrasVoz(
+            ChatResponse(37, mensajes, finalizado = true, estadoClasificacion = "FALLIDA", versionEstado = 2)
+        )
+        val reintento = fallida.aplicarActualizacionTrasVoz(
+            ChatResponse(37, mensajes, finalizado = true, estadoClasificacion = "PENDIENTE",
+                estadoRecuperacion = "ESPERANDO_API", versionEstado = 3)
+        )
+        val completada = reintento.aplicarActualizacionTrasVoz(
+            ChatResponse(37, mensajes, finalizado = true, estadoClasificacion = "COMPLETADA", versionEstado = 4)
+        )
+        for (estado in listOf(pendiente, fallida, reintento, completada)) {
+            assertEquals(mensaje, estado.avisoUrgenteVoz)
+        }
+    }
+
+    @Test
+    fun cacheDeAvisoUrgenteSoloSeRestauraParaElChatActual() {
+        val cache = ChatConversationCache()
+        cache.guardar(ChatResponse(37, mensajes), null, "Andá a una guardia.")
+        assertEquals("Andá a una guardia.", cache.recuperarAvisoUrgenteVoz(37))
+        assertNull(cache.recuperarAvisoUrgenteVoz(36))
+
+        cache.guardar(ChatResponse(38, emptyList()), null)
+        assertNull(cache.recuperarAvisoUrgenteVoz(37))
+        assertNull(cache.recuperarAvisoUrgenteVoz(38))
+
+        cache.guardar(ChatResponse(38, emptyList()), null, "Andá a una guardia.")
+        cache.limpiar()
+        assertNull(cache.recuperarAvisoUrgenteVoz(38))
+    }
+
+    @Test
     fun volverDuranteElCierreConservaTodoElHistorialYNoReabreLaEntrevista() {
         val cache = ChatConversationCache()
         cache.guardar(ChatResponse(37, mensajes, finalizado = true, estadoClasificacion = "PENDIENTE"), null)

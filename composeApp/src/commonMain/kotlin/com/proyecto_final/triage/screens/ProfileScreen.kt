@@ -29,6 +29,7 @@ import com.proyecto_final.triage.components.SelectableOptionsGrid
 import com.proyecto_final.triage.components.ScreenTitleBar
 import com.proyecto_final.triage.network.PerfilResponse
 import com.proyecto_final.triage.theme.AppTheme
+import com.proyecto_final.triage.utils.esCaba
 import com.proyecto_final.triage.viewmodels.ProfileState
 import com.proyecto_final.triage.viewmodels.ProfileViewModel
 import org.jetbrains.compose.resources.painterResource
@@ -66,8 +67,8 @@ class ProfileScreen : Screen {
 }
 
 private val perfilDeEjemplo = PerfilResponse(
-    nombre = "Rocio",
-    apellido = "Perez",
+    nombre = "Rocío",
+    apellido = "Pérez",
     tipoDocumento = "DNI",
     numeroDocumento = "42.123.456",
     fechaNacimiento = "2001-05-15",
@@ -169,16 +170,16 @@ fun ProfileContent(
                 // Campos de información del perfil
                 ProfileField(icon = Icons.Default.Person, label = "Nombre", value = perfil.nombre)
                 ProfileField(icon = Icons.Default.Person, label = "Apellido", value = perfil.apellido)
-                ProfileFieldWithArrow(label = "Tipo de documento", value = perfil.tipoDocumento)
-                ProfileField(icon = Icons.Default.Badge, label = "Nº de documento", value = perfil.numeroDocumento)
+                ProfileField(label = "Tipo de documento", value = perfil.tipoDocumento, showArrow = true)
+                ProfileField(icon = Icons.Default.Badge, label = "N.º de documento", value = perfil.numeroDocumento)
                 ProfileField(
                     icon = Icons.Default.CalendarMonth,
                     label = "Fecha de nacimiento",
                     value = formatearFechaNacimiento(perfil.fechaNacimiento ?: placeHolderText)
                 )
 
-                ProfileFieldWithArrow(label = "Sexo", value = perfil.generoBiologico ?: placeHolderText)
-                ProfileFieldWithArrow(label = "Genero", value = perfil.generoConElQueSeIdentifica ?: placeHolderText)
+                ProfileField(label = "Sexo", value = perfil.generoBiologico ?: placeHolderText, showArrow = true)
+                ProfileField(label = "Género", value = perfil.generoConElQueSeIdentifica ?: placeHolderText, showArrow = true)
                 ProfileField(
                     icon =  Icons.Filled.Email,
                     label = "Correo electrónico",
@@ -209,20 +210,21 @@ fun ProfileContent(
                 }
 
                 ProfileField(
-                    icon =  Icons.Filled.LocationCity,
-                    label = "Código postal",
-                    value = perfil.codigoPostal ?: placeHolderText
-                )
-                ProfileField(
-                    icon =  Icons.Filled.Place,
-                    label = "Ciudad",
-                    value = perfil.ciudad ?: placeHolderText
-                )
-                ProfileField(
                     icon =  Icons.Filled.Map,
                     label = "Provincia",
                     value = perfil.provincia ?: placeHolderText
                 )
+                ProfileField(
+                    icon =  Icons.Filled.Place,
+                    label = if (esCaba(perfil.provincia, perfil.ciudad)) "Barrio" else "Ciudad",
+                    value = perfil.ciudad ?: placeHolderText
+                )
+                ProfileField(
+                    icon =  Icons.Filled.LocationCity,
+                    label = "Código postal",
+                    value = perfil.codigoPostal ?: placeHolderText
+                )
+
 
                 ProfileField(
                     icon = Icons.Default.FitnessCenter,
@@ -368,10 +370,11 @@ private fun formatearFechaNacimiento(fecha: String): String {
 }
 
 @Composable
-fun ProfileField(
-    icon: ImageVector,
+private fun ProfileField(
+    icon: ImageVector? = null,
     label: String,
-    value: String
+    value: String,
+    showArrow: Boolean = false
 ) {
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -387,43 +390,31 @@ fun ProfileField(
         ) {
             val useStackedLayout = maxWidth < 280.dp || LocalDensity.current.fontScale >= 1.5f
 
-            if (useStackedLayout) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = if (useStackedLayout) Alignment.Top else Alignment.CenterVertically
+            ) {
+                Box(modifier = Modifier.width(32.dp)) {
+                    if (icon != null) {
                         Icon(
                             imageVector = icon,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(20.dp)
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
+                    }
+                }
+                if (useStackedLayout) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = label,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        ProfileFieldValue(value, showArrow, Modifier.fillMaxWidth())
                     }
-                    Text(
-                        text = value,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 32.dp, top = 4.dp)
-                    )
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
+                } else {
                     Text(
                         text = label,
                         style = MaterialTheme.typography.bodyMedium,
@@ -431,12 +422,7 @@ fun ProfileField(
                         modifier = Modifier.weight(0.4f)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = value,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.weight(0.6f)
-                    )
+                    ProfileFieldValue(value, showArrow, Modifier.weight(0.6f))
                 }
             }
         }
@@ -444,77 +430,26 @@ fun ProfileField(
 }
 
 @Composable
-fun ProfileFieldWithArrow(
-    label: String,
-    value: String
+private fun ProfileFieldValue(
+    value: String,
+    showArrow: Boolean,
+    modifier: Modifier
 ) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-    ) {
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp)
-        ) {
-            val useStackedLayout = maxWidth < 280.dp || LocalDensity.current.fontScale >= 1.5f
-
-            if (useStackedLayout) {
-                Column {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = value,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(0.4f)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = value,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.weight(0.6f)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.weight(1f)
+        )
+        if (showArrow) {
+            Spacer(modifier = Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }

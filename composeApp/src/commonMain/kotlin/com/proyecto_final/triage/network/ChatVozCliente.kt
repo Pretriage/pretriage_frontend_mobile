@@ -28,6 +28,7 @@ sealed interface EventoVoz {
     data object TurnoCompleto : EventoVoz
     data object SesionPorExpirar : EventoVoz
     data class ProcesandoRespuesta(val activo: Boolean) : EventoVoz
+    data class AvisoUrgente(val mensaje: String) : EventoVoz
     data object EntrevistaFinalizada : EventoVoz
     data class TriageFinalizado(
         val respuesta: ChatMensaje?,
@@ -64,6 +65,7 @@ internal fun parsearEventoVoz(texto: String): EventoVoz? {
         "turno_completo" -> EventoVoz.TurnoCompleto
         "sesion_por_expirar" -> EventoVoz.SesionPorExpirar
         "procesando_respuesta" -> evento.activo?.let { EventoVoz.ProcesandoRespuesta(it) }
+        "aviso_urgente" -> evento.mensaje?.takeIf { it.isNotBlank() }?.let { EventoVoz.AvisoUrgente(it) }
         "entrevista_finalizada" -> EventoVoz.EntrevistaFinalizada
         "triage_finalizado" -> EventoVoz.TriageFinalizado(evento.respuesta, evento.atencionEstimada, evento.origenRespuesta)
         "estado_chat" -> evento.chat?.let { EventoVoz.EstadoChat(it) }

@@ -700,7 +700,7 @@ fun RutaIndicacion(
                 )
             }
 
-            tramo.indicaciones.forEach { indicacion ->
+            tramo.indicaciones.filter { it.isNotBlank() }.forEach { indicacion ->
 
                 Text(
                     text = indicacion,

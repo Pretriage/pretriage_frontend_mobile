@@ -6,6 +6,6 @@ object AppConstants {
     const val ERROR_GET_CREDENCIALES = "No se pudieron obtener las credenciales"
     const val CONEXION_ERROR_MENSAJE = "Error de conexión"
 
-    const val ERROR_GENERICO = "Ah ocurrido un error, inténtelo de nuevo mas tarde."
+    const val ERROR_GENERICO = "Ha ocurrido un error. Inténtelo de nuevo más tarde."
 }
 

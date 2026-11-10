@@ -7,16 +7,21 @@ import com.proyecto_final.triage.network.ChatResponse
 internal class ChatConversationCache {
     private var chat: ChatResponse? = null
     private var atencion: AtencionEstimada? = null
+    private var avisoUrgenteVoz: String? = null
     private var solicitudChatId: Long? = null
     private var solicitudTexto: Pair<String, String>? = null
 
-    fun guardar(snapshot: ChatResponse, estimacion: AtencionEstimada?) {
+    fun guardar(snapshot: ChatResponse, estimacion: AtencionEstimada?, avisoUrgenteVoz: String? = null) {
         chat = snapshot
         atencion = estimacion
+        this.avisoUrgenteVoz = avisoUrgenteVoz
     }
 
     fun recuperar(id: Long): Pair<ChatResponse, AtencionEstimada?>? =
         chat?.takeIf { it.id == id }?.let { it to atencion }
+
+    fun recuperarAvisoUrgenteVoz(id: Long): String? =
+        avisoUrgenteVoz?.takeIf { chat?.id == id }
 
     fun guardarSolicitudTexto(chatId: Long, solicitudId: String?, contenido: String?) {
         solicitudChatId = chatId
@@ -29,6 +34,7 @@ internal class ChatConversationCache {
     fun limpiar() {
         chat = null
         atencion = null
+        avisoUrgenteVoz = null
         solicitudChatId = null
         solicitudTexto = null
     }

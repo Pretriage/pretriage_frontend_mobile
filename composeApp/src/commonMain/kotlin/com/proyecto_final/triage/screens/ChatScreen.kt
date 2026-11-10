@@ -22,6 +22,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -271,6 +274,27 @@ fun ChatContent(
             }
         }
 
+        state.avisoUrgenteVoz?.let { mensaje ->
+            Surface(
+                modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {
+                    liveRegion = LiveRegionMode.Assertive
+                },
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Buscá atención médica urgente ahora",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(mensaje, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
         // Card de atención estimada / prioridad
         state.atencionEstimada?.let { atencion ->
             CardAtencionEstimada(atencion)
@@ -373,7 +397,7 @@ fun ChatContent(
             PanelVoz(
                 estado = state.estadoVoz,
                 modoEntrada = state.modoEntradaVoz,
-                procesandoRespuesta = state.procesandoRespuestaVoz,
+                procesandoRespuesta = state.procesandoRespuestaVoz || state.avisoUrgenteVoz != null,
                 asistenteHablando = state.asistenteHablandoVoz,
                 onDetener = viewModel::detenerVoz
             )

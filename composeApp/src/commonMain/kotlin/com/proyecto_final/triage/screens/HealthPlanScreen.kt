@@ -339,7 +339,7 @@ fun HealthPlanContent(
         ) {
 
             // HEADER
-            CommonHeader(title = "Mis Credenciales", onBack = { onBack() })
+            CommonHeader(title = "Mis credenciales", onBack = { onBack() })
 
             // CONTENIDO DESPLAZABLE
             Column(
@@ -1085,7 +1085,7 @@ private fun DropdownSelectField(
                     .menuAnchor(
                         ExposedDropdownMenuAnchorType
                             .PrimaryNotEditable,
-                        enabled = true
+                        enabled = enabled
                     )
             )
 
@@ -1162,6 +1162,8 @@ private fun formatearVencimientoForm(
     return "${partes[0]}/${partes[1].takeLast(2)}"
 }
 
+private const val OTRO_PLAN = "Otro plan de la credencial"
+
 @Composable
 fun Formulario(
     credencial: Credencial,
@@ -1176,6 +1178,16 @@ fun Formulario(
     val isNombreValid = isNombreValido(credencial)
     val isNumeroValid = isNumeroValido(credencial)
     val isFechaValid = isFechaVencimientoValida(credencial)
+    val obraSocial = claveObraSocial(credencial.nombreObraSocial)
+    val planesDisponibles = planesDeObraSocial(credencial.nombreObraSocial)
+    var seleccionoOtroPlan by remember(credencial.idCredencial, obraSocial) {
+        mutableStateOf(false)
+    }
+    val planPersonalizado = seleccionoOtroPlan ||
+        (isPlanValido(credencial) && credencial.plan !in planesDisponibles)
+    val isPlanError = (showErrors && !isPlanValido(credencial)) ||
+        backendFieldErrors.containsKey("plan")
+    val planErrorMessage = backendFieldErrors["plan"] ?: AppConstants.CAMPO_OBLIGATORIO
 
     Column(modifier = Modifier.fillMaxWidth()) {
 
@@ -1185,10 +1197,11 @@ fun Formulario(
             value = credencial.nombreObraSocial,
             options = obrasSocialesDisponibles,
             enabled = enabled,
-            onValueChange = {
+            onValueChange = { nombre ->
                 onCredencialChange(
                     credencial.copy(
-                        nombreObraSocial = it
+                        nombreObraSocial = nombre,
+                        plan = if (claveObraSocial(nombre) == obraSocial) credencial.plan else ""
                     )
                 )
             },
@@ -1203,7 +1216,7 @@ fun Formulario(
 
         // Número de afiliado
         InputTextField(
-            label = "N° de Afiliado",
+            label = "N.º de afiliado",
             value = credencial.numeroAfiliado,
             onValueChange = {
                 onCredencialChange(
@@ -1227,29 +1240,37 @@ fun Formulario(
         )
 
         // Plan
-        InputTextField(
-            label = "Plan",
-            value = credencial.plan,
-            onValueChange = {
-                onCredencialChange(
-                    credencial.copy(
-                        plan = it
-                    )
-                )
-            },
-            enabled = enabled,
-            placeholder = "Ingresá tu plan",
-            isError =
-                (showErrors && credencial.plan.isBlank()) ||
-                        backendFieldErrors.containsKey("plan"),
-            errorMessage =
-                backendFieldErrors["plan"]
-                    ?: "Este campo es obligatorio"
-        )
+        if (!isNombreValid || planesDisponibles.isNotEmpty()) {
+            DropdownSelectField(
+                label = "Plan",
+                value = if (planPersonalizado) OTRO_PLAN else credencial.plan,
+                options = planesDisponibles + OTRO_PLAN,
+                enabled = enabled && planesDisponibles.isNotEmpty(),
+                onValueChange = { plan ->
+                    seleccionoOtroPlan = plan == OTRO_PLAN
+                    onCredencialChange(credencial.copy(plan = if (seleccionoOtroPlan) "" else plan))
+                },
+                isError = !planPersonalizado && isPlanError,
+                errorMessage = planErrorMessage,
+                placeholder = if (isNombreValid) "Seleccioná un plan" else "Seleccioná una obra social"
+            )
+        }
+
+        if (isNombreValid && (planesDisponibles.isEmpty() || planPersonalizado)) {
+            InputTextField(
+                label = if (planesDisponibles.isEmpty()) "Plan" else "Plan de la credencial",
+                value = credencial.plan,
+                onValueChange = { onCredencialChange(credencial.copy(plan = it)) },
+                enabled = enabled,
+                placeholder = "Tal como figura en la credencial",
+                isError = isPlanError,
+                errorMessage = planErrorMessage
+            )
+        }
 
         // Fecha de vencimiento
         InputMonthYearField(
-            label = "Fecha de Vencimiento",
+            label = "Fecha de vencimiento",
             value = credencial.fechaVencimiento,
             onValueChange = {
                 onCredencialChange(

@@ -75,6 +75,7 @@ data class ChatUiState(
     val progresoVozControladoPorServidor: Boolean = false,
     val asistenteHablandoVoz: Boolean = false,
     val errorVoz: Boolean = false,
+    val avisoUrgenteVoz: String? = null,
     // Transcripción en curso (todavía no confirmada como burbuja)
     val transcripcionPaciente: String = "",
     val transcripcionBot: String = ""
@@ -312,6 +313,7 @@ class ChatViewModel : ViewModel() {
             _state.value.copy(
                 chatId = chat.id, mensajes = chat.mensajes, finalizado = chat.finalizado,
                 estadoClasificacion = chat.estadoClasificacion, atencionEstimada = atencion,
+                avisoUrgenteVoz = chatIdGuardado?.let(chatConversationCache::recuperarAvisoUrgenteVoz),
                 solicitudTextoPendienteId = solicitudTextoGuardada?.first
                     ?: chat.solicitudTurnoTextoId.takeIf { chat.turnoTextoPendiente() },
                 contenidoSolicitudTextoPendiente = solicitudTextoGuardada?.second,
@@ -382,6 +384,7 @@ class ChatViewModel : ViewModel() {
                 _state.value = _state.value.copy(
                     chatId = chat.id,
                     mensajes = chat.mensajes,
+                    avisoUrgenteVoz = null,
                     finalizado = chat.finalizado || chat.estadoClasificacion.equals("FALLIDA", ignoreCase = true) ||
                         chat.estadoClasificacion.equals("PARCIAL", ignoreCase = true) || chat.cierreParcial,
                     estadoClasificacion = chat.estadoClasificacion,
@@ -690,7 +693,8 @@ class ChatViewModel : ViewModel() {
                 solicitudTurnoTextoId = actual.solicitudTextoPendienteId, intentosTurnoTexto = actual.intentosTurnoTexto,
                 cierreParcial = actual.cierreParcial, estadoRecuperacion = actual.estadoRecuperacion,
                 proximoReintentoEn = actual.proximoReintentoEn, versionEstado = actual.versionEstado),
-            actual.atencionEstimada
+            actual.atencionEstimada,
+            actual.avisoUrgenteVoz
         )
         chatConversationCache.guardarSolicitudTexto(id, actual.solicitudTextoPendienteId, actual.contenidoSolicitudTextoPendiente)
     }
@@ -837,6 +841,9 @@ class ChatViewModel : ViewModel() {
                 }
 
                 val resultado = conectarChatVoz(chatId, salida) { evento ->
+                    if (pantallaLiberada || salidaVoz !== salida || _state.value.chatId != chatId) {
+                        return@conectarChatVoz
+                    }
                     if (evento is EventoVoz.TriageFinalizado) {
                         triageRecibido = true
                         cierreSinDatosRecibido = evento.origenRespuesta == ORIGEN_CIERRE_SIN_DATOS
@@ -844,7 +851,7 @@ class ChatViewModel : ViewModel() {
                     if (evento is EventoVoz.ProcesamientoFinalizado) triageRecibido = true
                     if (evento is EventoVoz.EstadoChat) estadoChatRecibido = true
                     if (evento is EventoVoz.EntrevistaFinalizada) entrevistaFinalizadaRecibida = true
-                    procesarEventoVoz(evento, salida)
+                    procesarEventoVoz(evento, salida, chatId)
                 }
                 resultado.onFailure {
                     // The final server result takes precedence over a later socket failure.
@@ -904,7 +911,7 @@ class ChatViewModel : ViewModel() {
         }
     }
 
-    private fun procesarEventoVoz(evento: EventoVoz, salida: Channel<MensajeVozCliente>) {
+    private fun procesarEventoVoz(evento: EventoVoz, salida: Channel<MensajeVozCliente>, chatId: Long) {
         when (evento) {
             is EventoVoz.Audio -> {
                 if (_state.value.estadoVoz != EstadoVoz.DETENIENDO &&
@@ -962,6 +969,11 @@ class ChatViewModel : ViewModel() {
             EventoVoz.TurnoCompleto -> {
                 confirmarTranscripciones()
                 _state.update { it.cambiarProgresoVoz(CambioProgresoVoz.ASISTENTE_TERMINO) }
+            }
+
+            is EventoVoz.AvisoUrgente -> {
+                _state.update { it.aplicarAvisoUrgenteVoz(chatId, evento.mensaje) }
+                guardarEstadoActualEnCache()
             }
 
             EventoVoz.EntrevistaFinalizada -> {
@@ -1167,18 +1179,8 @@ class ChatViewModel : ViewModel() {
     /** Corta la voz y libera el audio. Llamar al salir de la pantalla. */
     fun liberarRecursos() {
         confirmarTranscripciones()
-        val actual = _state.value
-        actual.chatId?.let { id ->
-            if (ChatStorage.getChatId() == id) {
-                chatConversationCache.guardar(
-                    ChatResponse(id = id, mensajes = actual.mensajes, finalizado = actual.finalizado,
-                        estadoClasificacion = actual.estadoClasificacion, estadoTurnoTexto = actual.estadoTurnoTexto,
-                        solicitudTurnoTextoId = actual.solicitudTextoPendienteId, intentosTurnoTexto = actual.intentosTurnoTexto,
-                        cierreParcial = actual.cierreParcial, estadoRecuperacion = actual.estadoRecuperacion,
-                        proximoReintentoEn = actual.proximoReintentoEn, versionEstado = actual.versionEstado), actual.atencionEstimada
-                )
-                chatConversationCache.guardarSolicitudTexto(id, actual.solicitudTextoPendienteId, actual.contenidoSolicitudTextoPendiente)
-            }
+        if (_state.value.chatId == ChatStorage.getChatId()) {
+            guardarEstadoActualEnCache()
         }
         pantallaLiberada = true
         generacionTurnoTexto++

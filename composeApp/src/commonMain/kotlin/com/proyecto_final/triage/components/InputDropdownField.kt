@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.proyecto_final.triage.theme.Spacing
 
@@ -39,7 +40,8 @@ fun InputDropdownField(
     isError: Boolean = false,
     errorMessage: String = "Este campo es obligatorio",
     displayMap: Map<String, String> = emptyMap(),
-    placeholder: String? = null
+    placeholder: String? = null,
+    bottomSpacing: Dp = Spacing.md
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
 
@@ -128,6 +130,6 @@ fun InputDropdownField(
             }
         }
 
-        Spacer(modifier = Modifier.height(Spacing.md))
+        Spacer(modifier = Modifier.height(bottomSpacing))
     }
 }

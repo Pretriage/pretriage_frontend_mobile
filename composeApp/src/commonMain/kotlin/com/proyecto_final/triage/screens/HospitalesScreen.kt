@@ -13,13 +13,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -32,6 +28,7 @@ import com.proyecto_final.triage.components.RestriccionInscripcionRemota
 import com.proyecto_final.triage.components.Spinner
 import com.proyecto_final.triage.network.EspecialidadMedicaDTO
 import com.proyecto_final.triage.network.HospitalCercanoDTO
+import com.proyecto_final.triage.theme.AppTheme
 import com.proyecto_final.triage.theme.Spacing
 import com.proyecto_final.triage.viewmodels.HospitalesState
 import com.proyecto_final.triage.viewmodels.HospitalesViewModel
@@ -253,81 +250,60 @@ fun HospitalesContent(
     }
 }
 
+@Preview
 @Composable
-private fun OrdenHospitalSelector(
-    ordenSeleccionado: OrdenHospital,
-    onOrdenChange: (OrdenHospital) -> Unit
-) {
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val opciones = OrdenHospital.entries
-        val columnas = (maxWidth / (160.dp * LocalDensity.current.fontScale))
-            .toInt().coerceIn(1, opciones.size)
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = "Ordenar por",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Layout(
-                modifier = Modifier.fillMaxWidth(),
-                content = {
-                    opciones.forEach { orden ->
-                        OrdenHospitalChip(
-                            selected = ordenSeleccionado == orden,
-                            onClick = { onOrdenChange(orden) },
-                            label = orden.label
-                        )
-                    }
-                }
-            ) { measurables, constraints ->
-                val spacing = 8.dp.roundToPx()
-                val layoutWidth = constraints.maxWidth
-                val itemWidth = (layoutWidth - spacing * (columnas - 1)) / columnas
-                val sharedHeight = maxOf(48.dp.roundToPx(), measurables.maxOf { it.maxIntrinsicHeight(itemWidth) })
-                val chipConstraints = Constraints.fixed(itemWidth, sharedHeight)
-                val chips = measurables.map { it.measure(chipConstraints) }
-                val filas = (chips.size + columnas - 1) / columnas
-                val layoutHeight = constraints.constrainHeight(sharedHeight * filas + spacing * (filas - 1))
-                layout(layoutWidth, layoutHeight) {
-                    chips.forEachIndexed { index, chip ->
-                        chip.placeRelative(
-                            (index % columnas) * (itemWidth + spacing),
-                            (index / columnas) * (sharedHeight + spacing)
-                        )
-                    }
-                }
-            }
+fun OrdenHospitalSelectorPreview() {
+    var orden by remember { mutableStateOf(OrdenHospital.DISTANCIA) }
+    AppTheme {
+        Surface(modifier = Modifier.padding(16.dp)) {
+            OrdenHospitalSelector(ordenSeleccionado = orden, onOrdenChange = { orden = it })
         }
     }
 }
 
 @Composable
-private fun OrdenHospitalChip(
-    selected: Boolean,
-    onClick: () -> Unit,
-    label: String
+private fun OrdenHospitalSelector(
+    ordenSeleccionado: OrdenHospital,
+    onOrdenChange: (OrdenHospital) -> Unit
 ) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        label = {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        ) {
             Text(
-                text = label,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
+                text = "Ordenar por",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        },
-        leadingIcon = {
-            Icon(
-                imageVector = Icons.Filled.Done,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(FilterChipDefaults.IconSize)
-                    .alpha(if (selected) 1f else 0f)
+            Spacer(Modifier.width(Spacing.sm))
+            Text(
+                text = ordenSeleccionado.label,
+                modifier = Modifier.weight(1f),
+                textAlign = TextAlign.End
             )
+            Spacer(Modifier.width(Spacing.xs))
+            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
         }
-    )
+
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            OrdenHospital.entries.forEach { orden ->
+                DropdownMenuItem(
+                    text = { Text(orden.label) },
+                    onClick = {
+                        expanded = false
+                        if (orden != ordenSeleccionado) onOrdenChange(orden)
+                    },
+                    trailingIcon = if (orden == ordenSeleccionado) {
+                        { Icon(Icons.Filled.Done, contentDescription = "Seleccionado") }
+                    } else null
+                )
+            }
+        }
+    }
 }
 
 @Composable

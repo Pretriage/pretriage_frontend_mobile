@@ -7,6 +7,8 @@ import com.proyecto_final.triage.network.PerfilUpdateResult
 import com.proyecto_final.triage.network.PerfilUsuarioRequest
 import com.proyecto_final.triage.network.actualizarPerfil
 import com.proyecto_final.triage.screens.isValidEmail
+import com.proyecto_final.triage.utils.claveUbicacion
+import com.proyecto_final.triage.utils.provinciaParaSelector
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -69,8 +71,25 @@ class EditProfileViewModel : ViewModel() {
                 "alturaDireccion" -> estado.copy(alturaDireccion = valor)
                 "piso" -> estado.copy(piso = valor)
                 "codigoPostal" -> estado.copy(codigoPostal = valor)
-                "ciudad" -> estado.copy(ciudad = valor)
-                "provincia" -> estado.copy(provincia = valor)
+                "ciudad" -> estado.copy(
+                    ciudad = valor,
+                    provincia = provinciaParaSelector(estado.provincia, estado.ciudad),
+                    errors = estado.errors - "ciudad"
+                )
+                "provincia" -> {
+                    val provincia = provinciaParaSelector(valor)
+                    val actual = provinciaParaSelector(estado.provincia, estado.ciudad)
+                    val cambioProvincia = claveUbicacion(provincia) != claveUbicacion(actual)
+                    estado.copy(
+                        provincia = provincia,
+                        ciudad = if (cambioProvincia) "" else estado.ciudad,
+                        errors = if (cambioProvincia) {
+                            estado.errors - "provincia" - "ciudad"
+                        } else {
+                            estado.errors - "provincia"
+                        }
+                    )
+                }
 
                 "peso" -> estado.copy(peso = valor)
                 "alturaPersona" -> estado.copy(alturaPersona = valor)

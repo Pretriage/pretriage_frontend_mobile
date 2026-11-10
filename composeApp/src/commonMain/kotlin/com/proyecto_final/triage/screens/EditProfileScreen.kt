@@ -20,6 +20,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import com.proyecto_final.triage.components.InputDateField
 import com.proyecto_final.triage.components.InputDropdownField
 import com.proyecto_final.triage.components.InputTextField
+import com.proyecto_final.triage.components.SearchableLocationField
 import com.proyecto_final.triage.components.ScreenTitleBar
 import com.proyecto_final.triage.network.PerfilResponse
 import com.proyecto_final.triage.theme.AppTheme
@@ -28,6 +29,11 @@ import com.proyecto_final.triage.viewmodels.EditProfileState
 import com.proyecto_final.triage.viewmodels.EditProfileViewModel
 import com.proyecto_final.triage.AppConstants
 import com.proyecto_final.triage.components.NextButton
+import com.proyecto_final.triage.utils.CatalogoDomicilios
+import com.proyecto_final.triage.utils.cargarCatalogoDomicilios
+import com.proyecto_final.triage.utils.claveUbicacion
+import com.proyecto_final.triage.utils.esCaba
+import com.proyecto_final.triage.utils.provinciaParaSelector
 
 
 class EditProfileScreen(
@@ -63,10 +69,12 @@ class EditProfileScreen(
 @Preview
 @Composable
 fun EditProfilePreview() {
+    val viewModel = remember { EditProfileViewModel() }
+    val state by viewModel.state.collectAsState()
     AppTheme {
         EditProfileContent(
-            state = EditProfileState(),
-            viewModel = EditProfileViewModel(),
+            state = state,
+            viewModel = viewModel,
             onBack = { }
         )
     }
@@ -79,9 +87,6 @@ fun EditProfileContent(
     viewModel: EditProfileViewModel,
     onBack: () -> Unit
 ) {
-    
-    
-    
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -121,36 +126,30 @@ fun EditProfileContent(
         )
         Spacer(modifier = Modifier.height(Spacing.sm))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                var tipoDocumentoExpanded by remember { mutableStateOf(false) }
-                InputDropdownField(
-                    label = "Tipo de documento",
-                    value = state.tipoDocumento,
-                    expanded = tipoDocumentoExpanded,
-                    onExpandedChange = { tipoDocumentoExpanded = it },
-                    options = listOf("DNI", "Lib. Cívica", "Lib. Enrolamiento"),
-                    onOptionSelected = { viewModel.onFieldChange("tipoDocumento", it) },
-                    placeholder = "Seleccioná un tipo",
-                    isError = state.errors["tipoDocumento"] != null,
-                    errorMessage = state.errors["tipoDocumento"] ?: AppConstants.CAMPO_OBLIGATORIO
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                InputTextField(
-                    label = "N° de documento",
-                    value = state.numeroDocumento,
-                    onValueChange = { viewModel.onFieldChange("numeroDocumento", it) },
-                    keyboardType = KeyboardType.Number,
-                    placeholder = "Ingresá tu número",
-                    isError = state.errors["numeroDocumento"] != null,
-                    errorMessage = state.errors["numeroDocumento"] ?: AppConstants.CAMPO_OBLIGATORIO
-                )
-            }
-        }
+        var tipoDocumentoExpanded by remember { mutableStateOf(false) }
+        InputDropdownField(
+            label = "Tipo de documento",
+            value = state.tipoDocumento,
+            expanded = tipoDocumentoExpanded,
+            onExpandedChange = { tipoDocumentoExpanded = it },
+            options = listOf("DNI", "Lib. Cívica", "Lib. Enrolamiento"),
+            onOptionSelected = { viewModel.onFieldChange("tipoDocumento", it) },
+            placeholder = "Seleccioná un tipo",
+            isError = state.errors["tipoDocumento"] != null,
+            errorMessage = state.errors["tipoDocumento"] ?: AppConstants.CAMPO_OBLIGATORIO,
+            bottomSpacing = 0.dp
+        )
+        Spacer(modifier = Modifier.height(Spacing.sm))
+
+        InputTextField(
+            label = "N.º de documento",
+            value = state.numeroDocumento,
+            onValueChange = { viewModel.onFieldChange("numeroDocumento", it) },
+            keyboardType = KeyboardType.Number,
+            placeholder = "Ingresá tu número",
+            isError = state.errors["numeroDocumento"] != null,
+            errorMessage = state.errors["numeroDocumento"] ?: AppConstants.CAMPO_OBLIGATORIO
+        )
 
         Spacer(modifier = Modifier.height(Spacing.sm))
 
@@ -166,39 +165,34 @@ fun EditProfileContent(
         // GENERO
         SectionTitle("Identidad de género")
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                var sexoExpanded by remember { mutableStateOf(false) }
-                InputDropdownField(
-                    label = "Sexo biológico",
-                    value = state.generoBiologico,
-                    expanded = sexoExpanded,
-                    onExpandedChange = { sexoExpanded = it },
-                    options = listOf("Masculino", "Femenino"),
-                    onOptionSelected = { viewModel.onFieldChange("generoBiologico", it) },
-                    placeholder = "Seleccioná un sexo",
-                    isError = state.errors["generoBiologico"] != null,
-                    errorMessage = state.errors["generoBiologico"] ?: AppConstants.CAMPO_OBLIGATORIO
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                var generoExpanded by remember { mutableStateOf(false) }
-                InputDropdownField(
-                    label = "Género",
-                    value = state.generoConElQueSeIdentifica,
-                    expanded = generoExpanded,
-                    onExpandedChange = { generoExpanded = it },
-                    options = listOf("Masculino", "Femenino", "Otro"),
-                    onOptionSelected = { viewModel.onFieldChange("generoConElQueSeIdentifica", it) },
-                    placeholder = "Seleccioná un género",
-                    isError = state.errors["generoConElQueSeIdentifica"] != null,
-                    errorMessage = state.errors["generoConElQueSeIdentifica"] ?: AppConstants.CAMPO_OBLIGATORIO
-                )
-            }
-        }
+        var sexoExpanded by remember { mutableStateOf(false) }
+        InputDropdownField(
+            label = "Sexo biológico",
+            value = state.generoBiologico,
+            expanded = sexoExpanded,
+            onExpandedChange = { sexoExpanded = it },
+            options = listOf("Masculino", "Femenino"),
+            onOptionSelected = { viewModel.onFieldChange("generoBiologico", it) },
+            placeholder = "Seleccioná un sexo",
+            isError = state.errors["generoBiologico"] != null,
+            errorMessage = state.errors["generoBiologico"] ?: AppConstants.CAMPO_OBLIGATORIO,
+            bottomSpacing = 0.dp
+        )
+        Spacer(modifier = Modifier.height(Spacing.sm))
+
+        var generoExpanded by remember { mutableStateOf(false) }
+        InputDropdownField(
+            label = "Género",
+            value = state.generoConElQueSeIdentifica,
+            expanded = generoExpanded,
+            onExpandedChange = { generoExpanded = it },
+            options = listOf("Masculino", "Femenino", "Otro"),
+            onOptionSelected = { viewModel.onFieldChange("generoConElQueSeIdentifica", it) },
+            placeholder = "Seleccioná un género",
+            isError = state.errors["generoConElQueSeIdentifica"] != null,
+            errorMessage = state.errors["generoConElQueSeIdentifica"] ?: AppConstants.CAMPO_OBLIGATORIO,
+            bottomSpacing = 0.dp
+        )
 
         // CONTACTO
         SectionTitle("Contacto")
@@ -249,20 +243,23 @@ fun EditProfileContent(
             isError = state.errors["alturaDireccion"] != null,
             errorMessage = state.errors["alturaDireccion"] ?: "Ingresá un valor válido"
         )
-    
+        Spacer(modifier = Modifier.height(Spacing.sm))
+
         InputTextField(
-            label = "Piso (Opcional)",
+            label = "Piso (opcional)",
             value = state.piso,
             onValueChange = { viewModel.onFieldChange("piso", it) },
             keyboardType = KeyboardType.Number,
             placeholder = "Ingresá el piso",
             isError = state.errors["piso"] != null,
             errorMessage = state.errors["piso"] ?: "Ingresá un valor válido"
-        )    
-        
+        )
 
         Spacer(modifier = Modifier.height(Spacing.sm))
-        
+
+        CamposUbicacion(state, viewModel)
+        Spacer(modifier = Modifier.height(Spacing.sm))
+
         InputTextField(
             label = "Código postal",
             value = state.codigoPostal,
@@ -271,28 +268,6 @@ fun EditProfileContent(
             placeholder = "Ingresá el código postal",
             isError = state.errors["codigoPostal"] != null,
             errorMessage = state.errors["codigoPostal"] ?: "Ingresá un código postal válido"
-        )
-    
-        InputTextField(
-            label = "Ciudad",
-            value = state.ciudad,
-            onValueChange = { viewModel.onFieldChange("ciudad", it) },
-            leadingIcon = Icons.Filled.Place,
-            placeholder = "Ingresá tu ciudad",
-            isError = state.errors["ciudad"] != null,
-            errorMessage = state.errors["ciudad"] ?: AppConstants.CAMPO_OBLIGATORIO
-        )
-
-        Spacer(modifier = Modifier.height(Spacing.sm))
-
-        InputTextField(
-            label = "Provincia",
-            value = state.provincia,
-            onValueChange = { viewModel.onFieldChange("provincia", it) },
-            leadingIcon = Icons.Filled.Map,
-            placeholder = "Ingresá tu provincia",
-            isError = state.errors["provincia"] != null,
-            errorMessage = state.errors["provincia"] ?: AppConstants.CAMPO_OBLIGATORIO
         )
 
         // SALUD
@@ -309,7 +284,7 @@ fun EditProfileContent(
                     onValueChange = { viewModel.onFieldChange("peso", it) },
                     leadingIcon = Icons.Filled.FitnessCenter,
                     keyboardType = KeyboardType.Decimal,
-                    placeholder = "Ej: 70",
+                    placeholder = "Ej.: 70",
                     isError = state.errors["peso"] != null,
                     errorMessage = state.errors["peso"] ?: "Ingresá un peso válido"
                 )
@@ -321,7 +296,7 @@ fun EditProfileContent(
                     onValueChange = { viewModel.onFieldChange("alturaPersona", it) },
                     leadingIcon = Icons.Filled.Height,
                     keyboardType = KeyboardType.Number,
-                    placeholder = "Ej: 170",
+                    placeholder = "Ej.: 170",
                     isError = state.errors["alturaPersona"] != null,
                     errorMessage = state.errors["alturaPersona"] ?: "Ingresá una altura válida"
                 )
@@ -349,6 +324,50 @@ fun EditProfileContent(
         )
 
         Spacer(modifier = Modifier.height(Spacing.lg))
+    }
+}
+
+@Composable
+private fun CamposUbicacion(state: EditProfileState, viewModel: EditProfileViewModel) {
+    val catalogo by produceState<CatalogoDomicilios?>(initialValue = null) {
+        value = cargarCatalogoDomicilios()
+    }
+    val provincias = remember(catalogo) { catalogo?.provinces?.map { it.name }.orEmpty() }
+    val provincia = provinciaParaSelector(state.provincia, state.ciudad)
+    val claveProvincia = claveUbicacion(provincia)
+    val ubicacion = remember(catalogo, claveProvincia) {
+        catalogo?.provinces?.firstOrNull { claveUbicacion(it.name) == claveProvincia }
+    }
+    val domicilioEnCaba = esCaba(provincia)
+    val selectoresHabilitados = catalogo != null && !state.isSaving
+
+    SearchableLocationField(
+        label = "Provincia",
+        value = ubicacion?.name ?: provincia,
+        options = provincias,
+        onOptionSelected = { viewModel.onFieldChange("provincia", it) },
+        placeholder = "Seleccioná una provincia",
+        enabled = selectoresHabilitados,
+        isError = state.errors["provincia"] != null,
+        errorMessage = state.errors["provincia"] ?: AppConstants.CAMPO_OBLIGATORIO
+    )
+    Spacer(modifier = Modifier.height(Spacing.sm))
+
+    key(claveProvincia) {
+        SearchableLocationField(
+            label = if (domicilioEnCaba) "Barrio" else "Ciudad",
+            value = state.ciudad,
+            options = ubicacion?.cities.orEmpty(),
+            onOptionSelected = { viewModel.onFieldChange("ciudad", it) },
+            placeholder = when {
+                provincia.isBlank() -> "Seleccioná primero una provincia"
+                domicilioEnCaba -> "Seleccioná un barrio"
+                else -> "Seleccioná una ciudad"
+            },
+            enabled = selectoresHabilitados && provincia.isNotBlank(),
+            isError = state.errors["ciudad"] != null,
+            errorMessage = state.errors["ciudad"] ?: AppConstants.CAMPO_OBLIGATORIO
+        )
     }
 }
 

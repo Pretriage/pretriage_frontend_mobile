@@ -971,7 +971,7 @@ fun Step2Content(
 
             InputTextField(
 
-                label = "N° de documento",
+                label = "N.º de documento",
 
                 value = numeroDocumento,
 
