@@ -26,6 +26,7 @@ import com.proyecto_final.triage.network.PerfilResponse
 import com.proyecto_final.triage.theme.AppTheme
 import com.proyecto_final.triage.theme.Spacing
 import com.proyecto_final.triage.viewmodels.EditProfileState
+import com.proyecto_final.triage.viewmodels.PerfilLimites
 import com.proyecto_final.triage.viewmodels.EditProfileViewModel
 import com.proyecto_final.triage.AppConstants
 import com.proyecto_final.triage.components.NextButton
@@ -111,7 +112,8 @@ fun EditProfileContent(
             leadingIcon = Icons.Filled.Person,
             placeholder = "Ingresá tu nombre",
             isError = state.errors["nombre"] != null,
-            errorMessage = state.errors["nombre"] ?: AppConstants.CAMPO_OBLIGATORIO
+            errorMessage = state.errors["nombre"] ?: AppConstants.CAMPO_OBLIGATORIO,
+            maxLength = PerfilLimites.NOMBRE_MAX
         )
         Spacer(modifier = Modifier.height(Spacing.sm))
 
@@ -122,7 +124,8 @@ fun EditProfileContent(
             leadingIcon = Icons.Filled.Person,
             placeholder = "Ingresá tu apellido",
             isError = state.errors["apellido"] != null,
-            errorMessage = state.errors["apellido"] ?: AppConstants.CAMPO_OBLIGATORIO
+            errorMessage = state.errors["apellido"] ?: AppConstants.CAMPO_OBLIGATORIO,
+            maxLength = PerfilLimites.NOMBRE_MAX
         )
         Spacer(modifier = Modifier.height(Spacing.sm))
 
@@ -148,7 +151,8 @@ fun EditProfileContent(
             keyboardType = KeyboardType.Number,
             placeholder = "Ingresá tu número",
             isError = state.errors["numeroDocumento"] != null,
-            errorMessage = state.errors["numeroDocumento"] ?: AppConstants.CAMPO_OBLIGATORIO
+            errorMessage = state.errors["numeroDocumento"] ?: AppConstants.CAMPO_OBLIGATORIO,
+            maxLength = PerfilLimites.maxDocumento(state.tipoDocumento)
         )
 
         Spacer(modifier = Modifier.height(Spacing.sm))
@@ -205,7 +209,8 @@ fun EditProfileContent(
             keyboardType = KeyboardType.Email,
             placeholder = "nombre@ejemplo.com",
             isError = state.errors["email"] != null,
-            errorMessage = state.errors["email"] ?: AppConstants.CAMPO_OBLIGATORIO
+            errorMessage = state.errors["email"] ?: AppConstants.CAMPO_OBLIGATORIO,
+            maxLength = PerfilLimites.EMAIL_MAX
         )
         Spacer(modifier = Modifier.height(Spacing.sm))
 
@@ -217,7 +222,8 @@ fun EditProfileContent(
             keyboardType = KeyboardType.Phone,
             placeholder = "Ingresá tu teléfono",
             isError = state.errors["telefono"] != null,
-            errorMessage = state.errors["telefono"] ?: "Ingresá un teléfono válido"
+            errorMessage = state.errors["telefono"] ?: "Ingresá un teléfono válido",
+            maxLength = PerfilLimites.TELEFONO_MAX
         )
 
         // DOMICILIO
@@ -230,7 +236,8 @@ fun EditProfileContent(
             leadingIcon = Icons.Filled.Home,
             placeholder = "Ingresá tu calle",
             isError = state.errors["calle"] != null,
-            errorMessage = state.errors["calle"] ?: AppConstants.CAMPO_OBLIGATORIO
+            errorMessage = state.errors["calle"] ?: AppConstants.CAMPO_OBLIGATORIO,
+            maxLength = PerfilLimites.CALLE_MAX
         )
         Spacer(modifier = Modifier.height(Spacing.sm))
 
@@ -241,7 +248,8 @@ fun EditProfileContent(
             keyboardType = KeyboardType.Number,
             placeholder = "Ingresá la altura",
             isError = state.errors["alturaDireccion"] != null,
-            errorMessage = state.errors["alturaDireccion"] ?: "Ingresá un valor válido"
+            errorMessage = state.errors["alturaDireccion"] ?: "Ingresá un valor válido",
+            maxLength = PerfilLimites.ALTURA_DIRECCION_MAX.toString().length
         )
         Spacer(modifier = Modifier.height(Spacing.sm))
 
@@ -252,7 +260,8 @@ fun EditProfileContent(
             keyboardType = KeyboardType.Number,
             placeholder = "Ingresá el piso",
             isError = state.errors["piso"] != null,
-            errorMessage = state.errors["piso"] ?: "Ingresá un valor válido"
+            errorMessage = state.errors["piso"] ?: "Ingresá un valor válido",
+            maxLength = PerfilLimites.PISO_MAX.toString().length
         )
 
         Spacer(modifier = Modifier.height(Spacing.sm))
@@ -263,11 +272,12 @@ fun EditProfileContent(
         InputTextField(
             label = "Código postal",
             value = state.codigoPostal,
-            onValueChange = { viewModel.onFieldChange("codigoPostal", it) },
-            keyboardType = KeyboardType.Number,
-            placeholder = "Ingresá el código postal",
+            onValueChange = { viewModel.onFieldChange("codigoPostal", it.uppercase()) },
+            keyboardType = KeyboardType.Text,
+            placeholder = "Ej.: 1425 o C1425ABC",
             isError = state.errors["codigoPostal"] != null,
-            errorMessage = state.errors["codigoPostal"] ?: "Ingresá un código postal válido"
+            errorMessage = state.errors["codigoPostal"] ?: "Ingresá un código postal válido",
+            maxLength = PerfilLimites.CODIGO_POSTAL_MAX
         )
 
         // SALUD
@@ -286,7 +296,8 @@ fun EditProfileContent(
                     keyboardType = KeyboardType.Decimal,
                     placeholder = "Ej.: 70",
                     isError = state.errors["peso"] != null,
-                    errorMessage = state.errors["peso"] ?: "Ingresá un peso válido"
+                    errorMessage = state.errors["peso"] ?: "Ingresá un peso válido",
+                    maxLength = 5
                 )
             }
             Column(modifier = Modifier.weight(1f)) {
@@ -298,7 +309,8 @@ fun EditProfileContent(
                     keyboardType = KeyboardType.Number,
                     placeholder = "Ej.: 170",
                     isError = state.errors["alturaPersona"] != null,
-                    errorMessage = state.errors["alturaPersona"] ?: "Ingresá una altura válida"
+                    errorMessage = state.errors["alturaPersona"] ?: "Ingresá una altura válida",
+                    maxLength = PerfilLimites.ALTURA_CM_MAX.toString().length
                 )
             }
         }
