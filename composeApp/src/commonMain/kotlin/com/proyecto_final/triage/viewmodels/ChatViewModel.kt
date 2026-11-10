@@ -21,7 +21,6 @@ import com.proyecto_final.triage.storage.ChatStorage
 import com.proyecto_final.triage.storage.chatConversationCache
 import com.proyecto_final.triage.network.ChatResponse
 import com.proyecto_final.triage.network.ErrorHttpChat
-import kotlinx.coroutines.withTimeoutOrNull
 import com.proyecto_final.triage.network.enviarMensaje
 import com.proyecto_final.triage.network.mensajeErrorEnvioChat
 import com.proyecto_final.triage.network.iniciarChat
@@ -53,6 +52,10 @@ data class ChatUiState(
     val actualizacionTurnoTextoDisponible: Boolean = false,
     val estadoTurnoTexto: String? = null,
     val intentosTurnoTexto: Int = 0,
+    val cierreParcial: Boolean = false,
+    val estadoRecuperacion: String = "SIN_RECUPERACION",
+    val proximoReintentoEn: String? = null,
+    val versionEstado: Long = 0,
     val verificandoRespuesta: Boolean = false,
     val siguiendoCierre: Boolean = false,
     val actualizacionCierreDisponible: Boolean = false,
@@ -79,49 +82,84 @@ data class ChatUiState(
 
 internal fun ChatUiState.aplicarChatReconciliado(chat: com.proyecto_final.triage.network.ChatResponse, procesando: Boolean): ChatUiState = copy(
     enviando = false,
-    respuestaPendiente = procesando && !chat.finalizado,
+    respuestaPendiente = (procesando || chat.turnoTextoPendiente()) && !chat.finalizado,
     solicitudTextoPendienteId = if (procesando) solicitudTextoPendienteId ?: chat.solicitudTurnoTextoId else null,
     contenidoSolicitudTextoPendiente = if (procesando) contenidoSolicitudTextoPendiente else null,
     turnoTextoDesconocido = false,
     estadoTurnoTexto = chat.estadoTurnoTexto,
     intentosTurnoTexto = chat.intentosTurnoTexto,
+    cierreParcial = chat.cierreParcial,
+    estadoRecuperacion = if (chat.estadoClasificacion.equals("NO_SOLICITADA", true) && chat.finalizado ||
+        chat.estadoClasificacion.equals("PARCIAL", true) || chat.estadoClasificacion.equals("COMPLETADA", true) ||
+        chat.estadoClasificacion.equals("FALLIDA", true)) {
+        "SIN_RECUPERACION"
+    } else chat.estadoRecuperacion,
+    proximoReintentoEn = if (chat.estadoClasificacion.equals("NO_SOLICITADA", true) && chat.finalizado ||
+        chat.estadoClasificacion.equals("PARCIAL", true) || chat.estadoClasificacion.equals("COMPLETADA", true) ||
+        chat.estadoClasificacion.equals("FALLIDA", true)) null else chat.proximoReintentoEn,
+    versionEstado = maxOf(versionEstado, chat.versionEstado),
     mensajes = chat.mensajes,
     mensajesNoEnviados = emptySet(),
     borrador = "",
-    atencionEstimada = if (procesando) atencionEstimada else null,
-    finalizado = chat.finalizado || chat.estadoClasificacion.equals("FALLIDA", ignoreCase = true),
+    atencionEstimada = if (procesando && !chat.ocultaEstimacionAnterior()) atencionEstimada else null,
+    finalizado = chat.finalizado || chat.estadoClasificacion.equals("FALLIDA", ignoreCase = true) ||
+        chat.estadoClasificacion.equals("PARCIAL", ignoreCase = true) || chat.cierreParcial,
     estadoClasificacion = chat.estadoClasificacion,
     envioExitoso = null,
     error = null
 )
 
+internal fun ChatResponse.ocultaEstimacionAnterior(): Boolean =
+    estadoClasificacion.equals("PARCIAL", ignoreCase = true) ||
+        (cierreParcial && estadoClasificacion.equals("PENDIENTE", ignoreCase = true))
+
 internal fun ChatUiState.aplicarEstadoTurnoTexto(chat: ChatResponse): ChatUiState {
     if (chat.id != null && chatId != null && chat.id != chatId) return this
+    if (chat.versionEstado < versionEstado) return this
+    val mismaVersion = chat.versionEstado == versionEstado
+    if (mismaVersion && solicitudTextoPendienteId != null &&
+        chat.solicitudTurnoTextoId != solicitudTextoPendienteId && !chat.turnoTextoNoDisponible() && !chat.finalizado
+    ) return copy(
+        siguiendoTurnoTexto = false,
+        respuestaPendiente = false,
+        turnoTextoDesconocido = true,
+        actualizacionTurnoTextoDisponible = true,
+        verificandoRespuesta = false
+    )
     val estadoActualClasificacion = estadoClasificacion?.uppercase()
     val estadoRemotoClasificacion = chat.estadoClasificacion?.uppercase()
     val clasificacionActualTerminal = estadoActualClasificacion == "COMPLETADA" ||
-        estadoActualClasificacion == "FALLIDA" ||
+        estadoActualClasificacion == "FALLIDA" || estadoActualClasificacion == "PARCIAL" ||
         (finalizado && estadoActualClasificacion == "NO_SOLICITADA")
     val falloAvanzaACompletada = estadoActualClasificacion == "FALLIDA" &&
         estadoRemotoClasificacion == "COMPLETADA"
-    if (clasificacionActualTerminal && estadoRemotoClasificacion != estadoActualClasificacion && !falloAvanzaACompletada) {
+    if (mismaVersion && clasificacionActualTerminal && estadoRemotoClasificacion != estadoActualClasificacion && !falloAvanzaACompletada) {
         return this
     }
     val preservarCierre = finalizado && estadoActualClasificacion == "PENDIENTE" &&
         !chat.finalizado && estadoRemotoClasificacion == "NO_SOLICITADA"
-    if (estadoTurnoTexto.equals("NO_DISPONIBLE", true) && !chat.turnoTextoNoDisponible()) {
-        return copy(verificandoRespuesta = false, siguiendoTurnoTexto = false,
-            actualizacionTurnoTextoDisponible = false, error = null)
-    }
     val pendiente = chat.turnoTextoPendiente()
     val noDisponible = chat.turnoTextoNoDisponible()
     val completado = chat.estadoTurnoTexto.equals("COMPLETADA", ignoreCase = true)
     val solicitudCoincide = solicitudTextoPendienteId == null || chat.solicitudTurnoTextoId == solicitudTextoPendienteId
     val completadoActual = completado && solicitudCoincide
     val cierreAdministrativo = chat.finalizado && estadoRemotoClasificacion == "NO_SOLICITADA"
-    val terminal = noDisponible || completadoActual || cierreAdministrativo ||
-        chat.estadoClasificacion.equals("COMPLETADA", true) || chat.estadoClasificacion.equals("FALLIDA", true)
+    val clasificacionTerminal = estadoRemotoClasificacion in setOf("COMPLETADA", "FALLIDA", "PARCIAL")
+    val terminal = completadoActual || cierreAdministrativo || clasificacionTerminal
+    val recuperacionActiva = chat.estadoRecuperacion.equals("REINTENTANDO", true) ||
+        chat.estadoRecuperacion.equals("ESPERANDO_API", true)
+    val noDisponibleLegacySinRecuperacion = noDisponible && !terminal && !recuperacionActiva
+    val turnoPendiente = pendiente || recuperacionActiva
     val respuestaAntigua = solicitudTextoPendienteId != null && chat.solicitudTurnoTextoId != solicitudTextoPendienteId
+    val versionAvanza = chat.versionEstado > versionEstado
+    val solicitudAplicada = when {
+        terminal || noDisponibleLegacySinRecuperacion -> null
+        versionAvanza -> chat.solicitudTurnoTextoId
+        else -> solicitudTextoPendienteId ?: chat.solicitudTurnoTextoId
+    }
+    val contenidoSolicitudAplicado = if (terminal || noDisponibleLegacySinRecuperacion ||
+        (versionAvanza && chat.solicitudTurnoTextoId != solicitudTextoPendienteId)
+    ) null else contenidoSolicitudTextoPendiente
     val mensajesCanonicos = when {
         terminal -> chat.mensajes
         !respuestaAntigua && chat.mensajes.size >= mensajes.size -> chat.mensajes
@@ -130,21 +168,27 @@ internal fun ChatUiState.aplicarEstadoTurnoTexto(chat: ChatResponse): ChatUiStat
     return copy(
         mensajes = mensajesCanonicos,
         finalizado = chat.finalizado || finalizado || chat.estadoClasificacion.equals("COMPLETADA", true) ||
-            chat.estadoClasificacion.equals("FALLIDA", true),
+            chat.estadoClasificacion.equals("FALLIDA", true) || chat.estadoClasificacion.equals("PARCIAL", true) || chat.cierreParcial,
         estadoClasificacion = if (preservarCierre) estadoClasificacion else chat.estadoClasificacion ?: estadoClasificacion,
+        atencionEstimada = if (chat.ocultaEstimacionAnterior()) null else atencionEstimada,
         estadoTurnoTexto = chat.estadoTurnoTexto,
         intentosTurnoTexto = chat.intentosTurnoTexto,
-        solicitudTextoPendienteId = if (terminal) null else solicitudTextoPendienteId ?: chat.solicitudTurnoTextoId,
-        contenidoSolicitudTextoPendiente = if (terminal) null else contenidoSolicitudTextoPendiente,
-        respuestaPendiente = pendiente && !terminal,
-        turnoTextoDesconocido = !terminal && !pendiente && if (solicitudTextoPendienteId != null) {
-            !solicitudCoincide || turnoTextoDesconocido || chat.solicitudTurnoTextoId == null
-        } else {
-            turnoTextoDesconocido && chat.estadoTurnoTexto == null
+        cierreParcial = chat.cierreParcial,
+        estadoRecuperacion = if (terminal) "SIN_RECUPERACION" else chat.estadoRecuperacion,
+        proximoReintentoEn = if (terminal) null else chat.proximoReintentoEn,
+        versionEstado = maxOf(versionEstado, chat.versionEstado),
+        solicitudTextoPendienteId = solicitudAplicada,
+        contenidoSolicitudTextoPendiente = contenidoSolicitudAplicado,
+        respuestaPendiente = turnoPendiente && !terminal,
+        turnoTextoDesconocido = when {
+            terminal || noDisponibleLegacySinRecuperacion -> false
+            turnoPendiente -> turnoTextoDesconocido
+            solicitudTextoPendienteId != null -> !solicitudCoincide || turnoTextoDesconocido || chat.solicitudTurnoTextoId == null
+            else -> turnoTextoDesconocido && chat.estadoTurnoTexto == null
         },
-        actualizacionTurnoTextoDisponible = !terminal && !pendiente && solicitudTextoPendienteId != null && !siguiendoTurnoTexto,
-        mensajesNoEnviados = if (terminal || pendiente) emptySet() else mensajesNoEnviados,
-        borrador = if (terminal || pendiente) "" else borrador,
+        actualizacionTurnoTextoDisponible = !terminal && !turnoPendiente && solicitudAplicada != null && !siguiendoTurnoTexto,
+        mensajesNoEnviados = if (terminal || turnoPendiente) emptySet() else mensajesNoEnviados,
+        borrador = if (terminal || turnoPendiente) "" else borrador,
         enviando = false,
         verificandoRespuesta = false,
         envioExitoso = null,
@@ -153,14 +197,16 @@ internal fun ChatUiState.aplicarEstadoTurnoTexto(chat: ChatResponse): ChatUiStat
 }
 
 internal val ChatUiState.turnoTextoBloqueaChat: Boolean
-    get() = respuestaPendiente || turnoTextoDesconocido || estadoTurnoTexto.equals("NO_DISPONIBLE", true) ||
-        solicitudTextoPendienteId != null
+    get() = !finalizado && (respuestaPendiente || turnoTextoDesconocido ||
+        estadoRecuperacion.equals("REINTENTANDO", true) || estadoRecuperacion.equals("ESPERANDO_API", true) ||
+        solicitudTextoPendienteId != null)
 internal fun ChatUiState.aplicarChatVerificadoPendiente(
     chat: com.proyecto_final.triage.network.ChatResponse,
     respuestaRecibida: Boolean
 ): ChatUiState {
     val estadoTerminal = chat.estadoClasificacion.equals("COMPLETADA", ignoreCase = true) ||
-        chat.estadoClasificacion.equals("FALLIDA", ignoreCase = true)
+        chat.estadoClasificacion.equals("FALLIDA", ignoreCase = true) ||
+        chat.estadoClasificacion.equals("PARCIAL", ignoreCase = true)
     val entrevistaCerrada = chat.finalizado || estadoTerminal
     return copy(
         verificandoRespuesta = false,
@@ -168,8 +214,13 @@ internal fun ChatUiState.aplicarChatVerificadoPendiente(
         mensajes = chat.mensajes,
         mensajesNoEnviados = emptySet(),
         borrador = "",
+        atencionEstimada = if (chat.ocultaEstimacionAnterior()) null else atencionEstimada,
         finalizado = entrevistaCerrada,
         estadoClasificacion = chat.estadoClasificacion,
+        cierreParcial = chat.cierreParcial,
+        estadoRecuperacion = chat.estadoRecuperacion,
+        proximoReintentoEn = chat.proximoReintentoEn,
+        versionEstado = maxOf(versionEstado, chat.versionEstado),
         envioExitoso = null,
         error = null
     )
@@ -224,8 +275,10 @@ class ChatViewModel : ViewModel() {
     private var envioTextoJob: Job? = null
     private var seguimientoTurnoTextoJob: Job? = null
     private var actualizacionTurnoTextoJob: Job? = null
+    private var refreshEnForegroundJob: Job? = null
     private var generacionTurnoTexto = 0
     private var pantallaLiberada = false
+    private var appEnPrimerPlano = true
     private var salidaVoz: Channel<MensajeVozCliente>? = null
     // El audio nativo puede cambiar de modo al iniciar o al cambiar la salida.
     // Colectar en viewModelScope evita escribir el estado UI desde hilos de audio.
@@ -264,8 +317,14 @@ class ChatViewModel : ViewModel() {
                 contenidoSolicitudTextoPendiente = solicitudTextoGuardada?.second,
                 estadoTurnoTexto = chat.estadoTurnoTexto,
                 intentosTurnoTexto = chat.intentosTurnoTexto,
+                cierreParcial = chat.cierreParcial,
+                estadoRecuperacion = chat.estadoRecuperacion,
+                proximoReintentoEn = chat.proximoReintentoEn,
+                versionEstado = chat.versionEstado,
                 respuestaPendiente = chat.turnoTextoPendiente(),
-                turnoTextoDesconocido = solicitudTextoGuardada != null && !chat.turnoTextoPendiente(),
+                turnoTextoDesconocido = chat.estadoRecuperacion.equals("REINTENTANDO", true) ||
+                    chat.estadoRecuperacion.equals("ESPERANDO_API", true) ||
+                    (solicitudTextoGuardada != null && !chat.turnoTextoPendiente()),
                 iniciando = true, error = null
             )
         } ?: _state.value.copy(
@@ -323,10 +382,15 @@ class ChatViewModel : ViewModel() {
                 _state.value = _state.value.copy(
                     chatId = chat.id,
                     mensajes = chat.mensajes,
-                    finalizado = chat.finalizado || chat.estadoClasificacion.equals("FALLIDA", ignoreCase = true),
+                    finalizado = chat.finalizado || chat.estadoClasificacion.equals("FALLIDA", ignoreCase = true) ||
+                        chat.estadoClasificacion.equals("PARCIAL", ignoreCase = true) || chat.cierreParcial,
                     estadoClasificacion = chat.estadoClasificacion,
                     estadoTurnoTexto = chat.estadoTurnoTexto,
                     intentosTurnoTexto = chat.intentosTurnoTexto,
+                    cierreParcial = chat.cierreParcial,
+                    estadoRecuperacion = chat.estadoRecuperacion,
+                    proximoReintentoEn = chat.proximoReintentoEn,
+                    versionEstado = chat.versionEstado,
                     respuestaPendiente = chat.turnoTextoPendiente(),
                     iniciando = false
                 )
@@ -448,6 +512,10 @@ class ChatViewModel : ViewModel() {
                         contenidoSolicitudTextoPendiente = contenido,
                         turnoTextoDesconocido = true,
                         estadoTurnoTexto = resultado.chat?.estadoTurnoTexto,
+                        estadoRecuperacion = resultado.chat?.estadoRecuperacion ?: _state.value.estadoRecuperacion,
+                        proximoReintentoEn = resultado.chat?.proximoReintentoEn ?: _state.value.proximoReintentoEn,
+                        cierreParcial = resultado.chat?.cierreParcial ?: _state.value.cierreParcial,
+                        versionEstado = maxOf(_state.value.versionEstado, resultado.chat?.versionEstado ?: 0),
                         siguiendoTurnoTexto = false,
                         actualizacionTurnoTextoDisponible = true,
                         mensajesNoEnviados = emptySet(),
@@ -478,7 +546,9 @@ class ChatViewModel : ViewModel() {
         val actual = _state.value
         val chatId = actual.chatId ?: return
         if (pantallaLiberada || actual.verificandoRespuesta || actual.siguiendoTurnoTexto ||
-            (actual.solicitudTextoPendienteId == null && !actual.turnoTextoDesconocido)
+            (actual.solicitudTextoPendienteId == null && !actual.turnoTextoDesconocido &&
+                !actual.estadoRecuperacion.equals("REINTENTANDO", true) &&
+                !actual.estadoRecuperacion.equals("ESPERANDO_API", true))
         ) return
         _state.update { it.copy(verificandoRespuesta = true, actualizacionTurnoTextoDisponible = false, error = null) }
         val generacion = generacionTurnoTexto
@@ -489,40 +559,118 @@ class ChatViewModel : ViewModel() {
                     _state.update { it.aplicarEstadoTurnoTexto(chat) }
                     guardarEstadoActualEnCache()
                     iniciarSeguimientoTurnoTexto()
+                    iniciarSeguimientoCierre()
                 }
                 .onFailure { error ->
                     if (error is kotlinx.coroutines.CancellationException) throw error
                     if (!trabajoTextoActivo(generacion)) return@onFailure
                     _state.update { it.copy(verificandoRespuesta = false, actualizacionTurnoTextoDisponible = true,
                         turnoTextoDesconocido = true,
-                        error = "Todavía no pudimos confirmar el estado. Consultá otra vez; no reenvíes el mensaje.") }
+                        error = "No pudimos confirmar la conexión. Seguimos verificando automáticamente; no reenvíes el mensaje.") }
+                    iniciarSeguimientoTurnoTexto()
                 }
+        }
+    }
+
+    /** Reconcile automatically whenever the chat returns to the foreground; GET only. */
+    fun actualizarEstadoEnForeground() {
+        appEnPrimerPlano = true
+        val actual = _state.value
+        val chatId = actual.chatId ?: return
+        if (pantallaLiberada || actual.iniciando || actual.verificandoRespuesta || refreshEnForegroundJob?.isActive == true) return
+        if (actual.finalizado && actual.esperandoResultadoCierre()) {
+            actualizarConversacion()
+            return
+        }
+        val hayRecuperacion = actual.solicitudTextoPendienteId != null || actual.turnoTextoDesconocido ||
+            actual.estadoRecuperacion.equals("REINTENTANDO", true) ||
+            actual.estadoRecuperacion.equals("ESPERANDO_API", true)
+        if (!hayRecuperacion) return
+        refreshEnForegroundJob = viewModelScope.launch {
+            obtenerChatParaReconciliar(chatId, 2_000L)
+                .onSuccess { chat ->
+                    _state.update { it.aplicarActualizacionTrasVoz(chat).aplicarEstadoTurnoTexto(chat) }
+                    guardarEstadoActualEnCache()
+                    iniciarSeguimientoTurnoTexto()
+                    iniciarSeguimientoCierre()
+                }
+                .onFailure { error ->
+                    if (error is kotlinx.coroutines.CancellationException) throw error
+                    iniciarSeguimientoTurnoTexto()
+                    iniciarSeguimientoCierre()
+                }
+        }
+    }
+
+    fun suspenderSeguimientosEnBackground() {
+        appEnPrimerPlano = false
+        seguimientoTurnoTextoJob?.cancel()
+        seguimientoTurnoTextoJob = null
+        seguimientoCierre?.cancel()
+        seguimientoCierre = null
+        actualizacionTurnoTextoJob?.cancel()
+        actualizacionTurnoTextoJob = null
+        refreshEnForegroundJob?.cancel()
+        refreshEnForegroundJob = null
+        _state.update { actual ->
+            val habiaTurno = actual.respuestaPendiente || actual.solicitudTextoPendienteId != null ||
+                actual.estadoRecuperacion.equals("REINTENTANDO", true) ||
+                actual.estadoRecuperacion.equals("ESPERANDO_API", true)
+            actual.copy(
+                respuestaPendiente = false,
+                siguiendoTurnoTexto = false,
+                siguiendoCierre = false,
+                verificandoRespuesta = false,
+                turnoTextoDesconocido = actual.turnoTextoDesconocido || habiaTurno,
+                actualizacionTurnoTextoDisponible = false,
+                actualizacionCierreDisponible = false
+            )
         }
     }
 
     private fun iniciarSeguimientoTurnoTexto() {
         val id = _state.value.chatId ?: return
-        if (pantallaLiberada || _state.value.solicitudTextoPendienteId == null ||
-            (!_state.value.respuestaPendiente && !_state.value.turnoTextoDesconocido) || _state.value.siguiendoTurnoTexto
+        val actual = _state.value
+        val recuperacionActiva = actual.estadoRecuperacion.equals("REINTENTANDO", true) ||
+            actual.estadoRecuperacion.equals("ESPERANDO_API", true)
+        if (pantallaLiberada || (actual.solicitudTextoPendienteId == null && !recuperacionActiva &&
+                !actual.respuestaPendiente && !actual.turnoTextoDesconocido) ||
+            (!actual.respuestaPendiente && !actual.turnoTextoDesconocido && !recuperacionActiva) ||
+            actual.siguiendoTurnoTexto || seguimientoTurnoTextoJob?.isActive == true
         ) return
         _state.update { it.copy(siguiendoTurnoTexto = true, actualizacionTurnoTextoDisponible = false) }
         val generacion = generacionTurnoTexto
         seguimientoTurnoTextoJob = viewModelScope.launch {
             try {
-                withTimeoutOrNull(120_000L) {
-                    seguirTurnoTexto(
+                seguirTurnoTexto(
                         chatId = id,
-                        siguePendiente = { trabajoTextoActivo(generacion) && (_state.value.respuestaPendiente || _state.value.turnoTextoDesconocido) },
+                        siguePendiente = { trabajoTextoActivo(generacion) && appEnPrimerPlano && (_state.value.respuestaPendiente || _state.value.turnoTextoDesconocido ||
+                            _state.value.estadoRecuperacion.equals("REINTENTANDO", true) || _state.value.estadoRecuperacion.equals("ESPERANDO_API", true)) },
                         obtener = ::obtenerChatParaReconciliar,
-                        aplicar = { chat -> if (trabajoTextoActivo(generacion)) _state.update { it.aplicarEstadoTurnoTexto(chat) } }
+                        aplicar = { chat ->
+                            if (trabajoTextoActivo(generacion)) _state.update { actual ->
+                                val actualizado = actual.aplicarEstadoTurnoTexto(chat)
+                                if (!actual.siguiendoTurnoTexto && !actualizado.finalizado &&
+                                    (actualizado.respuestaPendiente || actualizado.estadoRecuperacion.equals("REINTENTANDO", true) ||
+                                        actualizado.estadoRecuperacion.equals("ESPERANDO_API", true))
+                                ) actualizado.copy(respuestaPendiente = false, turnoTextoDesconocido = true,
+                                    actualizacionTurnoTextoDisponible = false, error = null) else actualizado
+                            }
+                        },
+                        maxDuracionMs = Long.MAX_VALUE,
+                        maxPolls = Int.MAX_VALUE,
+                        alPasarAEsperaLenta = {
+                            if (trabajoTextoActivo(generacion)) _state.update { actual ->
+                                if (actual.finalizado) actual else actual.copy(
+                                    respuestaPendiente = false,
+                                    siguiendoTurnoTexto = false,
+                                    turnoTextoDesconocido = true,
+                                    actualizacionTurnoTextoDisponible = false,
+                                    error = null
+                                )
+                            }
+                        }
                     )
-                }
-                if (trabajoTextoActivo(generacion) && (_state.value.respuestaPendiente || _state.value.turnoTextoDesconocido)) {
-                    _state.update { it.copy(respuestaPendiente = false, siguiendoTurnoTexto = false,
-                        turnoTextoDesconocido = true, actualizacionTurnoTextoDisponible = true,
-                        estadoClasificacion = if (it.finalizado && it.estadoClasificacion.equals("PENDIENTE", true)) null else it.estadoClasificacion,
-                        error = "La respuesta sigue sin confirmarse. Consultá el estado más tarde; no reenvíes el mensaje.") }
-                }
                 if (trabajoTextoActivo(generacion)) guardarEstadoActualEnCache()
                 if (trabajoTextoActivo(generacion)) iniciarSeguimientoCierre()
             } finally {
@@ -539,7 +687,9 @@ class ChatViewModel : ViewModel() {
         chatConversationCache.guardar(
             ChatResponse(id = id, mensajes = actual.mensajes, finalizado = actual.finalizado,
                 estadoClasificacion = actual.estadoClasificacion, estadoTurnoTexto = actual.estadoTurnoTexto,
-                solicitudTurnoTextoId = actual.solicitudTextoPendienteId, intentosTurnoTexto = actual.intentosTurnoTexto),
+                solicitudTurnoTextoId = actual.solicitudTextoPendienteId, intentosTurnoTexto = actual.intentosTurnoTexto,
+                cierreParcial = actual.cierreParcial, estadoRecuperacion = actual.estadoRecuperacion,
+                proximoReintentoEn = actual.proximoReintentoEn, versionEstado = actual.versionEstado),
             actual.atencionEstimada
         )
         chatConversationCache.guardarSolicitudTexto(id, actual.solicitudTextoPendienteId, actual.contenidoSolicitudTextoPendiente)
@@ -575,6 +725,8 @@ class ChatViewModel : ViewModel() {
                         _state.value = if (estadoActual.finalizado) {
                             estadoActual.aplicarActualizacionTrasVoz(chat).aplicarEstadoTurnoTexto(chat).copy(verificandoRespuesta = false)
                         } else estadoActual.aplicarEstadoTurnoTexto(chat)
+                        guardarEstadoActualEnCache()
+                        iniciarSeguimientoTurnoTexto()
                         iniciarSeguimientoCierre()
                     }
                     .onFailure { error ->
@@ -582,11 +734,13 @@ class ChatViewModel : ViewModel() {
                         _state.value = _state.value.copy(
                             verificandoRespuesta = false,
                             error = if (entrevistaCerrada) {
-                                "No pudimos actualizar el estado de la entrevista. Intentá consultar otra vez."
+                                "No pudimos actualizar el estado de la entrevista. Seguimos verificando automáticamente."
                             } else {
-                                "El mensaje quedó guardado, pero no pudimos actualizar la conversación. No lo reenvíes; intentá actualizar otra vez."
+                                "El mensaje quedó guardado, pero no pudimos actualizar la conversación. Seguimos verificando automáticamente; no lo reenvíes."
                             }
                         )
+                        iniciarSeguimientoTurnoTexto()
+                        iniciarSeguimientoCierre()
                     }
             } finally {
                 _state.update { if (it.verificandoRespuesta) it.copy(verificandoRespuesta = false) else it }
@@ -671,16 +825,14 @@ class ChatViewModel : ViewModel() {
             var triageRecibido = false
             var cierreSinDatosRecibido = false
             var entrevistaFinalizadaRecibida = false
+            var estadoChatRecibido = false
             try {
                 // Consulta previa por HTTP: renueva el token si venció (el handshake no reintenta)
                 // y evita abrir la voz sobre un chat ya finalizado (el backend respondería 409).
                 val chat = obtenerChat(chatId).getOrNull()
                 if (chat?.finalizado == true) {
-                    _state.value = _state.value.copy(
-                        mensajes = chat.mensajes,
-                        finalizado = true,
-                        estadoClasificacion = chat.estadoClasificacion
-                    )
+                    _state.update { it.aplicarActualizacionTrasVoz(chat).aplicarEstadoTurnoTexto(chat) }
+                    guardarEstadoActualEnCache()
                     return@launch
                 }
 
@@ -689,12 +841,14 @@ class ChatViewModel : ViewModel() {
                         triageRecibido = true
                         cierreSinDatosRecibido = evento.origenRespuesta == ORIGEN_CIERRE_SIN_DATOS
                     }
+                    if (evento is EventoVoz.ProcesamientoFinalizado) triageRecibido = true
+                    if (evento is EventoVoz.EstadoChat) estadoChatRecibido = true
                     if (evento is EventoVoz.EntrevistaFinalizada) entrevistaFinalizadaRecibida = true
                     procesarEventoVoz(evento, salida)
                 }
                 resultado.onFailure {
                     // The final server result takes precedence over a later socket failure.
-                    if (!triageRecibido && !entrevistaFinalizadaRecibida && !_state.value.finalizado) {
+                    if (!triageRecibido && !entrevistaFinalizadaRecibida && !estadoChatRecibido && !_state.value.finalizado) {
                         _state.update { it.copy(error = "Se interrumpió la voz.", errorVoz = true) }
                     }
                 }
@@ -826,6 +980,12 @@ class ChatViewModel : ViewModel() {
                 iniciarSeguimientoCierre()
             }
 
+            is EventoVoz.EstadoChat -> procesarSnapshotChatVoz(evento.chat, salida)
+
+            is EventoVoz.ProcesamientoFinalizado -> {
+                procesarSnapshotChatVoz(evento.chat, salida)
+            }
+
             is EventoVoz.TriageFinalizado -> {
                 confirmarTranscripciones()
                 _state.update { it.copy(estadoVoz = EstadoVoz.INACTIVA, error = null, actualizacionCierreDisponible = false) }
@@ -836,6 +996,9 @@ class ChatViewModel : ViewModel() {
                         atencionEstimada = null,
                         finalizado = true,
                         estadoClasificacion = "NO_SOLICITADA",
+                        cierreParcial = false,
+                        estadoRecuperacion = "SIN_RECUPERACION",
+                        proximoReintentoEn = null,
                         error = null,
                         errorVoz = false,
                         envioExitoso = null
@@ -847,6 +1010,9 @@ class ChatViewModel : ViewModel() {
                         atencionEstimada = evento.atencionEstimada ?: _state.value.atencionEstimada,
                         finalizado = true,
                         estadoClasificacion = "COMPLETADA",
+                        cierreParcial = false,
+                        estadoRecuperacion = "SIN_RECUPERACION",
+                        proximoReintentoEn = null,
                         errorVoz = false
                     ).cambiarProgresoVoz(CambioProgresoVoz.CIERRE)
                 }
@@ -876,6 +1042,33 @@ class ChatViewModel : ViewModel() {
             // El backend cierra el socket después de "fin"; el cierre termina conectarChatVoz.
             EventoVoz.Fin -> Unit
         }
+    }
+
+    private fun procesarSnapshotChatVoz(chat: ChatResponse, salida: Channel<MensajeVozCliente>) {
+        val turnoPendiente = chat.turnoTextoPendiente() ||
+            chat.estadoRecuperacion.equals("REINTENTANDO", true) ||
+            chat.estadoRecuperacion.equals("ESPERANDO_API", true)
+        val cerrarVoz = chat.finalizado || turnoPendiente
+        if (cerrarVoz) {
+            audio.detenerGrabacion()
+            audio.interrumpirReproduccion()
+            confirmarTranscripciones()
+            salida.trySend(MensajeVozCliente.Cerrar)
+        }
+        _state.update { actual ->
+            actual.aplicarActualizacionTrasVoz(chat).aplicarEstadoTurnoTexto(chat).copy(
+                estadoVoz = if (cerrarVoz) EstadoVoz.INACTIVA else actual.estadoVoz,
+                procesandoRespuestaVoz = if (cerrarVoz) false else actual.procesandoRespuestaVoz,
+                progresoVozControladoPorServidor = if (cerrarVoz) false else actual.progresoVozControladoPorServidor,
+                asistenteHablandoVoz = if (cerrarVoz) false else actual.asistenteHablandoVoz,
+                actualizacionCierreDisponible = if (chat.finalizado) false else actual.actualizacionCierreDisponible,
+                error = null,
+                errorVoz = false
+            )
+        }
+        guardarEstadoActualEnCache()
+        if (turnoPendiente) iniciarSeguimientoTurnoTexto()
+        iniciarSeguimientoCierre()
     }
 
     private fun confirmarTranscripciones() {
@@ -913,6 +1106,7 @@ class ChatViewModel : ViewModel() {
                     if (cierreSinDatosRecibido) it.copy(atencionEstimada = null) else it
                 }
             }
+            guardarEstadoActualEnCache()
         }
         iniciarSeguimientoCierre()
     }
@@ -920,30 +1114,50 @@ class ChatViewModel : ViewModel() {
     private fun iniciarSeguimientoCierre() {
         val id = _state.value.chatId ?: return
         if (_state.value.estadoTurnoTexto.equals("PENDIENTE", true) && _state.value.solicitudTextoPendienteId != null) return
-        if (!_state.value.esperandoResultadoCierre() || seguimientoCierre?.isActive == true) return
+        if (!appEnPrimerPlano || !_state.value.esperandoResultadoCierre() || seguimientoCierre?.isActive == true) return
         _state.update { it.copy(siguiendoCierre = true, actualizacionCierreDisponible = false) }
         seguimientoCierre = viewModelScope.launch {
-            var ultimaLectura: ChatResponse? = null
             try {
-                // Two backend classification attempts plus their backoff can take about 120 seconds.
-                // Keep bounded GET polling long enough to observe their terminal state.
-                withTimeoutOrNull(120_000L) {
-                    seguirResultadoCierre(
+                // Poll quickly for the two backend attempts, then continue slowly while foregrounded.
+                seguirResultadoCierre(
                         chatId = id,
-                        pendiente = { _state.value.esperandoResultadoCierre() },
+                        pendiente = { appEnPrimerPlano && _state.value.esperandoResultadoCierre() },
                         obtener = ::obtenerChatParaReconciliar,
                         aplicar = { chat ->
-                            ultimaLectura = chat
-                            _state.update { it.aplicarActualizacionTrasVoz(chat).aplicarEstadoTurnoTexto(chat) }
+                            val anterior = _state.value
+                            val actualizado = anterior.aplicarActualizacionTrasVoz(chat).aplicarEstadoTurnoTexto(chat)
+                            if (actualizado.finalizado && !actualizado.esperandoResultadoCierre() &&
+                                anterior.estadoVoz != EstadoVoz.INACTIVA
+                            ) {
+                                audio.detenerGrabacion()
+                                audio.interrumpirReproduccion()
+                                salidaVoz?.trySend(MensajeVozCliente.Cerrar)
+                            }
+                            _state.value = actualizado.copy(
+                                estadoVoz = if (actualizado.finalizado && !actualizado.esperandoResultadoCierre()) {
+                                    EstadoVoz.INACTIVA
+                                } else actualizado.estadoVoz,
+                                procesandoRespuestaVoz = if (actualizado.finalizado && !actualizado.esperandoResultadoCierre()) false
+                                    else actualizado.procesandoRespuestaVoz,
+                                progresoVozControladoPorServidor = if (actualizado.finalizado && !actualizado.esperandoResultadoCierre()) false
+                                    else actualizado.progresoVozControladoPorServidor,
+                                asistenteHablandoVoz = if (actualizado.finalizado && !actualizado.esperandoResultadoCierre()) false
+                                    else actualizado.asistenteHablandoVoz
+                            )
+                            guardarEstadoActualEnCache()
+                        },
+                        maxDuracionMs = Long.MAX_VALUE,
+                        maxPolls = Int.MAX_VALUE,
+                        alPasarAEsperaLenta = {
+                            _state.update { actual ->
+                                if (actual.esperandoResultadoCierre()) actual.copy(
+                                    siguiendoCierre = false,
+                                    actualizacionCierreDisponible = false,
+                                    error = null
+                                ) else actual
+                            }
                         }
                     )
-                }
-                if (_state.value.esperandoResultadoCierre()) {
-                    confirmarTranscripciones()
-                    _state.update { it.aplicarLimiteEsperaCierre(ultimaLectura) }
-                    // Stop only this client's exhausted channel. Backend classification continues.
-                    sesionVoz?.cancel()
-                }
             } finally {
                 _state.update { it.copy(siguiendoCierre = false) }
             }
@@ -959,7 +1173,9 @@ class ChatViewModel : ViewModel() {
                 chatConversationCache.guardar(
                     ChatResponse(id = id, mensajes = actual.mensajes, finalizado = actual.finalizado,
                         estadoClasificacion = actual.estadoClasificacion, estadoTurnoTexto = actual.estadoTurnoTexto,
-                        solicitudTurnoTextoId = actual.solicitudTextoPendienteId, intentosTurnoTexto = actual.intentosTurnoTexto), actual.atencionEstimada
+                        solicitudTurnoTextoId = actual.solicitudTextoPendienteId, intentosTurnoTexto = actual.intentosTurnoTexto,
+                        cierreParcial = actual.cierreParcial, estadoRecuperacion = actual.estadoRecuperacion,
+                        proximoReintentoEn = actual.proximoReintentoEn, versionEstado = actual.versionEstado), actual.atencionEstimada
                 )
                 chatConversationCache.guardarSolicitudTexto(id, actual.solicitudTextoPendienteId, actual.contenidoSolicitudTextoPendiente)
             }

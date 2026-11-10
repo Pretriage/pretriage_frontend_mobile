@@ -12,6 +12,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import kotlinx.coroutines.CancellationException
 
 suspend fun obtenerHospitalesCercanos(
     latitud: Double,
@@ -86,6 +87,10 @@ suspend fun elegirHospital(
     codigoEspecialidad: String
 ): Result<Unit> {
     return try {
+        val sancion = consultarSancionPaciente().getOrNull()
+        if (sancion?.vigente == true) {
+            return Result.failure(IngresoRemotoSancionado(sancion))
+        }
 
         val response = httpClient.post("${AppConfig.baseUrl}/api/atencion/hospital") {
             contentType(ContentType.Application.Json)
@@ -99,9 +104,15 @@ suspend fun elegirHospital(
             Result.success(Unit)
         } else {
             val errorBody = response.bodyAsText()
-            Result.failure(Exception(parsearMensajeError(errorBody)))
+            val rechazo = leerRechazoPorSancion(response.status, errorBody)
+            Result.failure(
+                if (rechazo == null) Exception(parsearMensajeError(errorBody))
+                else IngresoRemotoSancionado(rechazo)
+            )
         }
 
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         Result.failure(e)
     }

@@ -8,6 +8,7 @@ enum class ChatClassificationPresentation {
     PROCESANDO,
     FALLIDA,
     COMPLETADA,
+    PARCIAL,
     CERRADA_SIN_RESULTADO
 }
 
@@ -22,6 +23,7 @@ fun presentacionClasificacionChat(
     "NO_SOLICITADA" -> ChatClassificationPresentation.NO_SOLICITADA
     "PENDIENTE" -> ChatClassificationPresentation.PROCESANDO
     "FALLIDA" -> ChatClassificationPresentation.FALLIDA
+    "PARCIAL" -> ChatClassificationPresentation.PARCIAL
     "COMPLETADA" -> ChatClassificationPresentation.COMPLETADA
     else -> if (finalizado) {
         ChatClassificationPresentation.CERRADA_SIN_RESULTADO

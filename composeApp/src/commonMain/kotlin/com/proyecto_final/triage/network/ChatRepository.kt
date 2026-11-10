@@ -41,7 +41,11 @@ data class ChatResponse(
     val estadoClasificacion: String? = null,
     val estadoTurnoTexto: String? = null,
     val solicitudTurnoTextoId: String? = null,
-    val intentosTurnoTexto: Int = 0
+    val intentosTurnoTexto: Int = 0,
+    val cierreParcial: Boolean = false,
+    val estadoRecuperacion: String = "SIN_RECUPERACION",
+    val proximoReintentoEn: String? = null,
+    val versionEstado: Long = 0
 )
 
 @Serializable

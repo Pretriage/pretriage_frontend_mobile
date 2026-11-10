@@ -23,9 +23,12 @@ import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
+import com.proyecto_final.triage.components.AvisoSancionPaciente
 import com.proyecto_final.triage.components.CommonHeader
+import com.proyecto_final.triage.components.ConsultarSancionAlReanudar
 import com.proyecto_final.triage.components.ErrorBanner
 import com.proyecto_final.triage.components.ProgressBar
+import com.proyecto_final.triage.components.RestriccionInscripcionRemota
 import com.proyecto_final.triage.components.Spinner
 import com.proyecto_final.triage.network.EspecialidadMedicaDTO
 import com.proyecto_final.triage.network.HospitalCercanoDTO
@@ -33,6 +36,7 @@ import com.proyecto_final.triage.theme.Spacing
 import com.proyecto_final.triage.viewmodels.HospitalesState
 import com.proyecto_final.triage.viewmodels.HospitalesViewModel
 import com.proyecto_final.triage.viewmodels.OrdenHospital
+import com.proyecto_final.triage.viewmodels.mensajeInscripcionRemota
 
 class HospitalesScreen(private val type: String, private val ubicacion: String) : Screen {
     @Composable
@@ -42,6 +46,9 @@ class HospitalesScreen(private val type: String, private val ubicacion: String) 
         val viewModel = remember { HospitalesViewModel() }
         val state = viewModel.state
         val ordenSeleccionado = viewModel.ordenSeleccionado
+        val sancionPaciente = viewModel.sancionPaciente
+
+        ConsultarSancionAlReanudar(sancionPaciente)
 
         var selectedHospital by remember { mutableStateOf<Hospital?>(null) }
 
@@ -68,7 +75,9 @@ class HospitalesScreen(private val type: String, private val ubicacion: String) 
 
         LaunchedEffect(viewModel.hospitalSeleccionado) {
             if (viewModel.hospitalSeleccionado) {
-                navigator?.popUntilRoot()
+                navigator?.items?.firstOrNull()?.let { root ->
+                    navigator.replaceAll(listOf(root, ChatScreen()))
+                }
             }
         }
 
@@ -76,6 +85,8 @@ class HospitalesScreen(private val type: String, private val ubicacion: String) 
             state = state,
             selectedHospital = selectedHospital,
             ordenSeleccionado = ordenSeleccionado,
+            mensajeSancion = sancionPaciente.datos?.mensajeInscripcionRemota(),
+            seleccionEnCurso = viewModel.seleccionEnCurso,
             onRetry = { buscar() },
             onOrdenChange = { nuevoOrden ->
                 selectedHospital = null
@@ -97,6 +108,21 @@ class HospitalesScreen(private val type: String, private val ubicacion: String) 
                 }
             }
         )
+
+        AvisoSancionPaciente(sancionPaciente)
+
+        viewModel.errorSeleccion?.let { mensaje ->
+            AlertDialog(
+                onDismissRequest = viewModel::descartarErrorSeleccion,
+                title = { Text("No se pudo solicitar atención") },
+                text = { Text(mensaje) },
+                confirmButton = {
+                    TextButton(onClick = viewModel::descartarErrorSeleccion) {
+                        Text("Entendido")
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -105,12 +131,15 @@ fun HospitalesContent(
     state: HospitalesState,
     selectedHospital: Hospital?,
     ordenSeleccionado: OrdenHospital,
+    mensajeSancion: String?,
+    seleccionEnCurso: Boolean,
     onRetry: () -> Unit,
     onOrdenChange: (OrdenHospital) -> Unit,
     onBack: () -> Unit,
     onHospitalSelected: (Hospital) -> Unit,
     onContinue: () -> Unit
 ) {
+    val puedeSeleccionar = mensajeSancion == null && !seleccionEnCurso
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -139,6 +168,12 @@ fun HospitalesContent(
         )
 
         Spacer(modifier = Modifier.height(Spacing.md))
+
+        val hayHospitales = state is HospitalesState.Success && state.hospitales.isNotEmpty()
+        if (mensajeSancion != null && !hayHospitales) {
+            RestriccionInscripcionRemota(mensajeSancion)
+            Spacer(modifier = Modifier.height(Spacing.md))
+        }
 
         // SOLO ESTA ZONA CAMBIA SEGÚN EL ESTADO
         Box(
@@ -180,13 +215,17 @@ fun HospitalesContent(
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
+                            if (mensajeSancion != null) {
+                                item { RestriccionInscripcionRemota(mensajeSancion) }
+                            }
                             items(
                                 items = hospitales,
                                 key = { it.idHospital }
                             ) { hospital ->
                                 HospitalCard(
                                     hospital = hospital,
-                                    selected = selectedHospital?.idHospital == hospital.idHospital,
+                                    selected = mensajeSancion == null && selectedHospital?.idHospital == hospital.idHospital,
+                                    enabled = puedeSeleccionar,
                                     onClick = { onHospitalSelected(hospital) }
                                 )
                             }
@@ -201,7 +240,7 @@ fun HospitalesContent(
 
         Button(
             onClick = onContinue,
-            enabled = selectedHospital != null && state is HospitalesState.Success,
+            enabled = puedeSeleccionar && selectedHospital != null && state is HospitalesState.Success,
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
@@ -295,6 +334,7 @@ private fun OrdenHospitalChip(
 fun HospitalCard(
     hospital: Hospital,
     selected: Boolean,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Card(
@@ -312,7 +352,7 @@ fun HospitalCard(
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .clickable(enabled = enabled, onClick = onClick)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)

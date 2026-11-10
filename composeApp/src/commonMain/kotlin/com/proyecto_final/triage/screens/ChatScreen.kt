@@ -25,6 +25,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import com.proyecto_final.triage.audio.rememberSolicitudPermisoMicrofono
@@ -80,6 +83,7 @@ fun ChatContent(
     viewModel: ChatViewModel
 ) {
     val state by viewModel.state.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     var showConfirmDialog by remember { mutableStateOf(false) }
     var mostrarExito by remember { mutableStateOf(false) }
@@ -101,6 +105,15 @@ fun ChatContent(
 
     LaunchedEffect(Unit) {
         viewModel.iniciar()
+    }
+
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) viewModel.actualizarEstadoEnForeground()
+            if (event == Lifecycle.Event.ON_STOP) viewModel.suspenderSeguimientosEnBackground()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // Al enviar un mensaje: llevo la vista al mensaje recién agregado.
@@ -217,7 +230,9 @@ fun ChatContent(
                 }
             }
 
-            if (state.enviando || state.respuestaPendiente || state.siguiendoTurnoTexto) {
+            if (state.enviando || (state.respuestaPendiente && !state.turnoTextoDesconocido) ||
+                (state.siguiendoTurnoTexto && !state.turnoTextoDesconocido)
+            ) {
                 item {
                     BurbujaDeMensaje(
                         ChatMensaje(
@@ -270,15 +285,17 @@ fun ChatContent(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
             }
+            ChatClassificationPresentation.PARCIAL -> {
+                InfoBanner(
+                    text = "Tus respuestas quedaron guardadas para el equipo médico.",
+                    icon = Icons.Filled.Check
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
             ChatClassificationPresentation.PROCESANDO -> {
                 InfoBanner(text = "Estamos procesando tus respuestas...")
                 if (state.error != null) {
                     Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
-                }
-                if (state.actualizacionCierreDisponible) {
-                    Button(onClick = viewModel::actualizarConversacion, enabled = !state.verificandoRespuesta) {
-                        Text(if (state.verificandoRespuesta) "Consultando..." else "Consultar estado")
-                    }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
             }
@@ -291,11 +308,6 @@ fun ChatContent(
                 if (state.error != null) {
                     Text(state.error ?: "Error", color = MaterialTheme.colorScheme.error)
                 }
-                if (state.actualizacionCierreDisponible) {
-                    Button(onClick = viewModel::actualizarConversacion, enabled = !state.verificandoRespuesta) {
-                        Text(if (state.verificandoRespuesta) "Consultando..." else "Consultar estado")
-                    }
-                }
                 Spacer(modifier = Modifier.height(12.dp))
             }
             ChatClassificationPresentation.NO_SOLICITADA -> {
@@ -306,19 +318,22 @@ fun ChatContent(
             }
         }
 
-        if (state.turnoTextoDesconocido && state.chatId != null && !state.siguiendoTurnoTexto) {
+        if (state.turnoTextoDesconocido && state.chatId != null &&
+            !state.estadoRecuperacion.equals("REINTENTANDO", true) &&
+            !state.estadoRecuperacion.equals("ESPERANDO_API", true)
+        ) {
             InfoBanner(text = if (state.solicitudTextoPendienteId != null) {
-                "No pudimos confirmar el estado del mensaje. Consultá el estado; no lo reenvíes."
+                "Seguimos confirmando tu mensaje automáticamente. No hace falta volver a enviarlo."
             } else {
-                "No pudimos confirmar el estado del chat. Consultá el estado antes de continuar."
+                "Seguimos verificando el estado de tu conversación automáticamente."
             })
-            Button(onClick = viewModel::actualizarEstadoTurnoTexto, enabled = !state.verificandoRespuesta) {
-                Text(if (state.verificandoRespuesta) "Consultando..." else "Consultar estado")
-            }
             Spacer(modifier = Modifier.height(12.dp))
         }
-        if (state.estadoTurnoTexto.equals("NO_DISPONIBLE", ignoreCase = true)) {
-            InfoBanner(text = "El asistente no está disponible. No se pudo continuar el chat.")
+        if (state.estadoRecuperacion.equals("REINTENTANDO", ignoreCase = true)) {
+            InfoBanner(text = "Estamos procesando tu respuesta. Se va a actualizar automáticamente.")
+            Spacer(modifier = Modifier.height(12.dp))
+        } else if (state.estadoRecuperacion.equals("ESPERANDO_API", ignoreCase = true)) {
+            InfoBanner(text = "Tu respuesta está guardada. Estamos intentando conectar de nuevo.")
             Spacer(modifier = Modifier.height(12.dp))
         }
         // Error al enviar (texto conservado en el campo). Once closed, classification status is authoritative.

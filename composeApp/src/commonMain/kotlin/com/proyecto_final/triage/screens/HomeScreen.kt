@@ -45,6 +45,9 @@ import cafe.adriel.voyager.core.annotation.ExperimentalVoyagerApi
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.jetpack.navigatorViewModel
+import com.proyecto_final.triage.components.AvisoSancionPaciente
+import com.proyecto_final.triage.components.ConsultarSancionAlReanudar
+import com.proyecto_final.triage.components.RestriccionInscripcionRemota
 import com.proyecto_final.triage.components.Spinner
 import com.proyecto_final.triage.network.estadoConsulta.EstadoConsultaPacienteDTO
 import com.proyecto_final.triage.network.estadoConsulta.HospitalSeleccionadoResponse
@@ -53,6 +56,8 @@ import com.proyecto_final.triage.theme.AppTheme
 import com.proyecto_final.triage.utils.dialEmergency
 import com.proyecto_final.triage.viewmodels.HomeState
 import com.proyecto_final.triage.viewmodels.HomeViewModel
+import com.proyecto_final.triage.viewmodels.SancionPacienteState
+import com.proyecto_final.triage.viewmodels.mensajeInscripcionRemota
 import kotlinx.coroutines.delay
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -116,6 +121,9 @@ class HomeScreen : Screen {
             return
         }
 
+        val sancion = remember { SancionPacienteState() }
+        ConsultarSancionAlReanudar(sancion)
+
         /*
          * Cargar consulta activa.
          */
@@ -135,6 +143,7 @@ class HomeScreen : Screen {
         HomeContent(
             state = state,
             viewModel = viewModel,
+            mensajeSancion = sancion.datos?.mensajeInscripcionRemota(),
 
             /*
              * Llamada real al 911.
@@ -171,6 +180,7 @@ class HomeScreen : Screen {
                 )
             }
         )
+        AvisoSancionPaciente(sancion)
     }
 }
 
@@ -219,6 +229,7 @@ fun HomeContent(
     state: HomeState,
 
     viewModel: HomeViewModel,
+    mensajeSancion: String? = null,
 
     onEmergency: () -> Unit,
 
@@ -436,6 +447,11 @@ fun HomeContent(
          * Menú contextual: Chat si hay consulta activa, sino Solicitar atención
          */
 
+        if (mensajeSancion != null) {
+            RestriccionInscripcionRemota(mensajeSancion)
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
         when (state) {
 
             is HomeState.Loading -> {
@@ -447,18 +463,26 @@ fun HomeContent(
                     icon = Icons.AutoMirrored.Filled.Chat,
                     titulo = "Chat interactivo",
                     descripcion = "Consultá al asistente sobre tu atención",
-                    onClick = onChat
+                    onClick = onChat,
+                    accentColor = MaterialTheme.colorScheme.tertiary
                 )
             }
 
-            else -> {
-                MenuCard(
-                    icon = Icons.Filled.LocalHospital,
-                    titulo = "Solicitar atención de guardia",
-                    descripcion = "Elegí el hospital según su tiempo de espera y describí tus síntomas",
-                    onClick = onSolicitarAtencion
-                )
-            }
+            else -> Unit
+        }
+
+        if (state !is HomeState.Loading && (state !is HomeState.Success || mensajeSancion != null)) {
+            if (state is HomeState.Success) Spacer(modifier = Modifier.height(12.dp))
+            MenuCard(
+                icon = Icons.Filled.LocalHospital,
+                titulo = if (mensajeSancion == null) "Solicitar atención de guardia" else "Consultar hospitales",
+                descripcion = if (mensajeSancion == null) {
+                    "Elegí el hospital según su tiempo de espera y describí tus síntomas"
+                } else {
+                    "Consultá hospitales cercanos y sus tiempos estimados"
+                },
+                onClick = onSolicitarAtencion
+            )
         }
 
         Spacer(
@@ -586,7 +610,9 @@ private fun MenuCard(
 
     descripcion: String,
 
-    onClick:() -> Unit
+    onClick:() -> Unit,
+
+    accentColor: Color = MENU_BLUE
 
 ) {
 
@@ -649,7 +675,7 @@ private fun MenuCard(
                             RoundedCornerShape(14.dp)
                         )
                         .background(
-                            MENU_BLUE
+                            accentColor
                         ),
 
                 contentAlignment =
@@ -702,7 +728,7 @@ private fun MenuCard(
                         FontWeight.Bold,
 
                     color =
-                        MENU_BLUE
+                        accentColor
                 )
 
                 Spacer(
@@ -743,7 +769,7 @@ private fun MenuCard(
                     null,
 
                 tint =
-                    MENU_BLUE,
+                    accentColor,
 
                 modifier =
                     Modifier.size(30.dp)
@@ -1622,6 +1648,9 @@ private fun estadoVisual(
 
         "En cola" to
                 Color(0xFF3AA76D)
+
+    estadoEntradaCola == "EN_REVISION" ->
+        "En revisión" to ACCENT
 
     estadoEntradaCola ==
             "LLAMADO" ->

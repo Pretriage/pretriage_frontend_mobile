@@ -1231,6 +1231,17 @@ private fun EstadoConsultaSection(
                 }
 
 
+                estadoCola == EstadoEntradaCola.EN_REVISION -> {
+                    CardEstadoConsulta(
+                        titulo = "El médico está revisando tu consulta",
+                        subtitulo = "Esperá el llamado antes de acercarte a la sala."
+                    ) {
+                        if (hospital?.nombreSector?.isNotBlank() == true) {
+                            SeccionSector(nombreSector = hospital.nombreSector)
+                        }
+                    }
+                }
+
                 /*
                  * ====================================================
                  * LLAMADO

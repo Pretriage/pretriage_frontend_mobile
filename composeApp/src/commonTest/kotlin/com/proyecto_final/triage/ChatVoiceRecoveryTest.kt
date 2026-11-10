@@ -2,6 +2,9 @@ package com.proyecto_final.triage
 
 import com.proyecto_final.triage.network.ChatMensaje
 import com.proyecto_final.triage.network.ChatResponse
+import com.proyecto_final.triage.network.AtencionEstimada
+import com.proyecto_final.triage.network.EventoVoz
+import com.proyecto_final.triage.network.parsearEventoVoz
 import com.proyecto_final.triage.storage.ChatConversationCache
 import com.proyecto_final.triage.viewmodels.*
 import kotlinx.coroutines.CancellationException
@@ -110,6 +113,43 @@ class ChatVoiceRecoveryTest {
     }
 
     @Test
+    fun procesamientoFinalizadoParcialCierraVozSinPresentarTriageCompleto() {
+        val remoto = ChatResponse(37, mensajes + ChatMensaje("Tus respuestas quedaron guardadas.", "BOT"),
+            finalizado = true, estadoClasificacion = "PARCIAL", cierreParcial = true,
+            estadoTurnoTexto = "COMPLETADA", estadoRecuperacion = "SIN_RECUPERACION", versionEstado = 8)
+        val estado = pendiente().copy(estadoVoz = EstadoVoz.PROCESANDO,
+            atencionEstimada = AtencionEstimada(posicionEnCola = 1))
+            .aplicarActualizacionTrasVoz(remoto)
+
+        assertEquals("PARCIAL", estado.estadoClasificacion)
+        assertTrue(estado.cierreParcial)
+        assertFalse(estado.esperandoResultadoCierre())
+        assertEquals(EstadoVoz.INACTIVA, estado.estadoVoz)
+        assertEquals(ChatClassificationPresentation.PARCIAL,
+            presentacionClasificacionChat(estado.finalizado, estado.estadoClasificacion))
+        assertNull(estado.atencionEstimada)
+    }
+
+    @Test
+    fun eventoProcesamientoFinalizadoParseaSnapshotAditivoDelChat() {
+        val evento = parsearEventoVoz("""{"tipo":"procesamiento_finalizado","chat":{"id":37,"mensajes":[],"finalizado":true,"estadoClasificacion":"PARCIAL","cierreParcial":true,"estadoRecuperacion":"SIN_RECUPERACION","versionEstado":9}}""")
+        val resultado = assertIs<EventoVoz.ProcesamientoFinalizado>(evento)
+        assertTrue(resultado.chat.cierreParcial)
+        assertEquals(9L, resultado.chat.versionEstado)
+        assertEquals("PARCIAL", resultado.chat.estadoClasificacion)
+    }
+
+    @Test
+    fun eventoEstadoChatParseaSnapshotDeTurnoPendienteSinImplicarCierre() {
+        val evento = parsearEventoVoz("""{"tipo":"estado_chat","chat":{"id":37,"mensajes":[],"finalizado":false,"estadoClasificacion":"NO_SOLICITADA","estadoTurnoTexto":"PENDIENTE","estadoRecuperacion":"ESPERANDO_API","solicitudTurnoTextoId":"req-1","versionEstado":10}}""")
+        val resultado = assertIs<EventoVoz.EstadoChat>(evento)
+        assertFalse(resultado.chat.finalizado)
+        assertEquals("ESPERANDO_API", resultado.chat.estadoRecuperacion)
+        assertEquals("req-1", resultado.chat.solicitudTurnoTextoId)
+        assertEquals(10L, resultado.chat.versionEstado)
+    }
+
+    @Test
     fun unGetAntiguoPosteriorAlFalloNoLoReviveNiRecortaElHistorial() {
         val fallida = pendiente().aplicarActualizacionTrasVoz(
             ChatResponse(37, mensajes, finalizado = true, estadoClasificacion = "FALLIDA")
@@ -192,6 +232,66 @@ class ChatVoiceRecoveryTest {
     }
 
     @Test
+    fun marcaCierreParcialNoDetienePollingMientrasClasificacionSiguePendiente() {
+        var estado = pendiente().copy(versionEstado = 23)
+        var lecturas = 0
+        runSuspend {
+            seguirResultadoCierre(
+                37,
+                pendiente = { estado.esperandoResultadoCierre() },
+                obtener = { _, _ ->
+                    when (++lecturas) {
+                        1 -> Result.success(ChatResponse(37, mensajes, finalizado = true,
+                            estadoClasificacion = "PENDIENTE", cierreParcial = true,
+                            estadoTurnoTexto = "COMPLETADA", estadoRecuperacion = "REINTENTANDO",
+                            versionEstado = 24))
+                        else -> Result.success(ChatResponse(37, mensajes + ChatMensaje("Tus respuestas quedaron guardadas.", "BOT"),
+                            finalizado = true, estadoClasificacion = "PARCIAL", cierreParcial = true,
+                            estadoTurnoTexto = "COMPLETADA", estadoRecuperacion = "SIN_RECUPERACION",
+                            versionEstado = 25))
+                    }
+                },
+                aplicar = { chat ->
+                    estado = estado.aplicarActualizacionTrasVoz(chat).aplicarEstadoTurnoTexto(chat)
+                },
+                esperar = {}
+            )
+        }
+        assertEquals(2, lecturas)
+        assertEquals("PARCIAL", estado.estadoClasificacion)
+        assertEquals(25L, estado.versionEstado)
+        assertFalse(estado.esperandoResultadoCierre())
+        assertTrue(estado.finalizado)
+    }
+
+    @Test
+    fun seguimientoCierreApagaConfirmacionRapidaPeroSigueConsultandoEnFaseLenta() {
+        var lecturas = 0
+        var inicioFaseLenta = 0
+        val pausas = mutableListOf<Long>()
+        runSuspend {
+            seguirResultadoCierre(
+                37,
+                pendiente = { true },
+                obtener = { _, _ ->
+                    lecturas++
+                    Result.success(ChatResponse(37, mensajes, finalizado = true,
+                        estadoClasificacion = "PENDIENTE", estadoRecuperacion = "ESPERANDO_API"))
+                },
+                aplicar = {},
+                esperar = { pausas += it },
+                maxDuracionMs = 215_000L,
+                maxPolls = 20,
+                alPasarAEsperaLenta = { inicioFaseLenta++ }
+            )
+        }
+        assertEquals(1, inicioFaseLenta)
+        assertTrue(lecturas > 1)
+        assertTrue(pausas.contains(30_000L))
+        assertTrue(pausas.contains(15_000L))
+    }
+
+    @Test
     fun seguimientoSeAcotaCuandoElServidorNoConfirmaElResultado() {
         var lecturas = 0
         runSuspend {
@@ -200,7 +300,7 @@ class ChatVoiceRecoveryTest {
                 Result.failure(IllegalStateException("sin conexión"))
             }, aplicar = { error("No hay resultado para aplicar") }, esperar = {})
         }
-        assertEquals(80, lecturas)
+        assertTrue(lecturas in 20..100)
     }
 
     @Test

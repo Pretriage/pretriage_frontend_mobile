@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
 private val ESTADOS_COLA_ACTIVA = setOf(
-    "EN_COLA", "LLAMADO", "EN_ESPERA", "ATRASADO", "EN_ATENCION"
+    "EN_COLA", "EN_REVISION", "LLAMADO", "EN_ESPERA", "ATRASADO", "EN_ATENCION"
 )
 
 private val ESTADOS_CONSULTA_ACTIVA_SIN_COLA = setOf(

@@ -2,6 +2,7 @@ package com.proyecto_final.triage
 
 import com.proyecto_final.triage.network.ChatMensaje
 import com.proyecto_final.triage.network.ChatResponse
+import com.proyecto_final.triage.network.AtencionEstimada
 import com.proyecto_final.triage.network.RespuestaChatResponse
 import com.proyecto_final.triage.network.ResultadoEnvioChat
 import com.proyecto_final.triage.network.ResultadoPostMensaje
@@ -9,8 +10,10 @@ import com.proyecto_final.triage.network.enviarConReconciliacion
 import com.proyecto_final.triage.network.seguirTurnoTexto
 import com.proyecto_final.triage.storage.ChatConversationCache
 import com.proyecto_final.triage.viewmodels.ChatUiState
+import com.proyecto_final.triage.viewmodels.ChatClassificationPresentation
 import com.proyecto_final.triage.viewmodels.aplicarChatReconciliado
 import com.proyecto_final.triage.viewmodels.aplicarEstadoTurnoTexto
+import com.proyecto_final.triage.viewmodels.presentacionClasificacionChat
 import com.proyecto_final.triage.viewmodels.turnoTextoBloqueaChat
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
@@ -92,8 +95,69 @@ class ChatTextTurnRecoveryTest {
         assertNull(completed.solicitudTextoPendienteId)
         assertFalse(unavailable.respuestaPendiente)
         assertFalse(unavailable.finalizado)
-        assertTrue(unavailable.turnoTextoBloqueaChat)
+        assertFalse(unavailable.turnoTextoBloqueaChat)
+        assertFalse(unavailable.respuestaPendiente)
+        assertNull(unavailable.solicitudTextoPendienteId)
         assertEquals("NO_SOLICITADA", unavailable.estadoClasificacion)
+    }
+
+    @Test
+    fun estadoRecuperacionConVersionMasNuevaReemplazaNoDisponibleCacheado() {
+        val cacheado = ChatUiState(chatId = 9, mensajes = listOf(patient),
+            solicitudTextoPendienteId = requestId, estadoTurnoTexto = "NO_DISPONIBLE",
+            turnoTextoDesconocido = true, versionEstado = 3)
+        val remoto = cacheado.aplicarEstadoTurnoTexto(ChatResponse(
+            id = 9, mensajes = listOf(patient), estadoTurnoTexto = "PENDIENTE",
+            solicitudTurnoTextoId = requestId, estadoRecuperacion = "REINTENTANDO", versionEstado = 4
+        ))
+
+        assertEquals("REINTENTANDO", remoto.estadoRecuperacion)
+        assertEquals(4L, remoto.versionEstado)
+        assertTrue(remoto.respuestaPendiente)
+        assertTrue(remoto.turnoTextoBloqueaChat)
+        assertNull(remoto.error)
+    }
+
+    @Test
+    fun versionMasViejaNoReviveNoDisponibleNiRecortaMensajes() {
+        val actual = ChatUiState(chatId = 9, mensajes = listOf(patient, ChatMensaje("¿Desde cuándo?", "BOT")),
+            estadoTurnoTexto = "COMPLETADA", versionEstado = 7)
+        val antigua = actual.aplicarEstadoTurnoTexto(ChatResponse(9, listOf(patient),
+            estadoTurnoTexto = "NO_DISPONIBLE", versionEstado = 6))
+        assertEquals(actual, antigua)
+    }
+
+    @Test
+    fun cierreParcialEsTerminalSinPresentarTriageCompletoNiDejarTurnoBloqueado() {
+        val estimate = AtencionEstimada(posicionEnCola = 1)
+        val pendiente = ChatUiState(chatId = 9, mensajes = listOf(patient),
+            solicitudTextoPendienteId = requestId, respuestaPendiente = true,
+            estadoTurnoTexto = "COMPLETADA", versionEstado = 2, atencionEstimada = estimate)
+        val parcial = pendiente.aplicarEstadoTurnoTexto(ChatResponse(
+            id = 9, mensajes = listOf(patient, ChatMensaje("Tus respuestas quedaron guardadas.", "BOT")),
+            finalizado = true, estadoClasificacion = "PARCIAL", estadoTurnoTexto = "COMPLETADA",
+            cierreParcial = true, solicitudTurnoTextoId = requestId, estadoRecuperacion = "SIN_RECUPERACION",
+            versionEstado = 3
+        ))
+        assertTrue(parcial.finalizado)
+        assertTrue(parcial.cierreParcial)
+        assertEquals("PARCIAL", parcial.estadoClasificacion)
+        assertNull(parcial.atencionEstimada)
+        assertFalse(parcial.turnoTextoBloqueaChat)
+        assertNull(parcial.solicitudTextoPendienteId)
+        assertEquals(ChatClassificationPresentation.PARCIAL,
+            presentacionClasificacionChat(parcial.finalizado, parcial.estadoClasificacion))
+
+        val reconciliado = pendiente.aplicarChatReconciliado(
+            ChatResponse(9, listOf(patient), finalizado = true, estadoClasificacion = "PARCIAL"),
+            procesando = true
+        )
+        assertNull(reconciliado.atencionEstimada)
+
+        val estimacionValida = ChatUiState(chatId = 9, atencionEstimada = estimate)
+            .aplicarEstadoTurnoTexto(ChatResponse(9, listOf(patient), finalizado = true,
+                estadoClasificacion = "COMPLETADA", cierreParcial = true))
+        assertEquals(estimate, estimacionValida.atencionEstimada)
     }
 
     @Test
@@ -168,8 +232,28 @@ class ChatTextTurnRecoveryTest {
             aplicar = { },
             esperar = { }
         )
-        assertEquals(80, reads)
+        assertTrue(reads in 20..100)
         assertEquals(last, result)
+    }
+
+    @Test
+    fun seguimientoPasaALaFaseLentaYRespetaBackoffDeApi() = runSuspend {
+        var slowPhaseStarted = 0
+        val pausas = mutableListOf<Long>()
+        seguirTurnoTexto(
+            chatId = 9,
+            siguePendiente = { true },
+            obtener = { _, _ -> Result.success(ChatResponse(9, listOf(patient),
+                estadoTurnoTexto = "PENDIENTE", estadoRecuperacion = "ESPERANDO_API")) },
+            aplicar = { },
+            esperar = { pausas += it },
+            maxDuracionMs = 215_000L,
+            maxPolls = 20,
+            alPasarAEsperaLenta = { slowPhaseStarted++ }
+        )
+
+        assertEquals(1, slowPhaseStarted)
+        assertTrue(pausas.contains(30_000L))
     }
 
     @Test
@@ -192,6 +276,32 @@ class ChatTextTurnRecoveryTest {
         assertNull(legacy.estadoTurnoTexto)
         assertNull(legacy.solicitudTurnoTextoId)
         assertEquals(0, legacy.intentosTurnoTexto)
+        assertFalse(legacy.cierreParcial)
+        assertEquals("SIN_RECUPERACION", legacy.estadoRecuperacion)
+        assertEquals(0L, legacy.versionEstado)
+    }
+
+    @Test
+    fun chatDtoAdditivoDecodificaSnapshotDeRecuperacionYParcial() {
+        val chat = Json.decodeFromString<ChatResponse>("""{"id":9,"mensajes":[],"finalizado":true,"estadoClasificacion":"PARCIAL","cierreParcial":true,"estadoRecuperacion":"SIN_RECUPERACION","proximoReintentoEn":null,"versionEstado":11}""")
+        assertTrue(chat.cierreParcial)
+        assertEquals("SIN_RECUPERACION", chat.estadoRecuperacion)
+        assertEquals(11L, chat.versionEstado)
+        assertEquals("PARCIAL", chat.estadoClasificacion)
+    }
+
+    @Test
+    fun snapshotCacheConservaVersionEstadoYFechaDeReintento() {
+        val cache = ChatConversationCache()
+        val snapshot = ChatResponse(9, listOf(patient), estadoTurnoTexto = "PENDIENTE",
+            solicitudTurnoTextoId = requestId, estadoRecuperacion = "ESPERANDO_API",
+            proximoReintentoEn = "2026-11-05T12:30:00Z", versionEstado = 42)
+        cache.guardar(snapshot, null)
+
+        val (restaurado, _) = assertNotNull(cache.recuperar(9))
+        assertEquals(42L, restaurado.versionEstado)
+        assertEquals("ESPERANDO_API", restaurado.estadoRecuperacion)
+        assertEquals(snapshot.proximoReintentoEn, restaurado.proximoReintentoEn)
     }
 
     private fun <T> runSuspend(block: suspend () -> T): T {

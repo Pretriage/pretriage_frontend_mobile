@@ -76,6 +76,47 @@ or refused connection triggers the generic “Algo salió mal” dialog.
 
 Mientras la entrada de la consulta permanece `EN_COLA`, la app abre una conexión SSE autenticada con `GET /api/atencion/tiempos/suscribirse/{consultaId}`. Recibe los eventos `tiempo-estimado` y `heartbeat`; al salir de la cola, el backend deja de enviar actualizaciones del tiempo estimado.
 
+### Entrada directa al chat y regreso al inicio
+
+Al confirmar la selección de hospital con éxito, la app abre directamente el chat.
+La navegación conserva inicio debajo del chat y descarta las pantallas de selección
+de especialidad, ubicación y hospital. Tanto la flecha del chat como Atrás de Android
+permiten volver a inicio; desde «Chat interactivo» se retoma la misma conversación.
+Este acceso usa un color propio para distinguirlo de «Solicitar atención de guardia».
+Un fallo al seleccionar hospital no abre el chat ni descarta la conversación guardada.
+La pantalla muestra el motivo informado por el backend.
+
+### Restricción de inscripción remota
+
+Inicio y la lista de hospitales consultan `GET /api/paciente/sancion` al abrirse
+o volver a primer plano. Mientras la sanción esté vigente, actualizan el estado
+cada 30 segundos en esas pantallas. También se consulta antes de confirmar un
+hospital y se maneja el `403 PATIENT_SANCTIONED` del backend si el estado cambió
+durante la selección. Los plazos se muestran en la fecha de Buenos Aires.
+
+La sanción deshabilita la selección para inscribirse a distancia. El listado de
+hospitales y sus tiempos, el perfil, los estudios y el chat de una consulta
+activa siguen disponibles. El aviso explica el ingreso por recepción e incluye
+la opción de llamar al 107 para urgencias. La app guarda los identificadores
+de los avisos de aplicación y levantamiento que el paciente ya vio en el
+dispositivo. Cuando el backend informa el levantamiento o vencimiento, la
+selección se habilita sin volver a iniciar sesión.
+
+Verificación manual del 5/11/2026 con la skill `android-mobile-validation`: Pixel 9 Pro XL
+(Android 17), APK debug compilado contra `https://api.pretriage.com.ar`; compilación y
+52 pruebas unitarias pasaron (0 errores, fallos u omitidas). Se observó la selección
+exitosa del Hospital Alemán, especialidad Clínica médica, abriendo Chat directamente, el regreso a inicio
+con la flecha y con Atrás de Android, el reingreso desde «Chat interactivo» conservando
+el marcador sintético y el acento verde del acceso. Capturas: `C:/Users/valen/AppData/Local/Temp/pretriage-navigation-qa-b5a061efb7364b9dab5b86746bd40729`
+(`01-home-before`, `04-chat-direct`, `07-home-chat-loaded`, `08-chat-reopened`,
+`09-home-after-android-back`, `10-chat-after-system-back`).
+
+Regresión manual: seleccionar especialidad, ubicación y hospital, confirmar y comprobar
+que aparece el chat. Escribir una respuesta, volver a inicio con la flecha y reabrir
+«Chat interactivo»: deben conservarse los mensajes. Repetir con Atrás de Android y
+comprobar que no reaparece el selector ni se reabre el chat automáticamente. Tras
+cancelar la consulta, inicio debe volver a ofrecer «Solicitar atención de guardia».
+
 ### Chat after cancelling a consultation
 
 Mobile clears its saved chat ID after a successful cancellation
@@ -87,7 +128,7 @@ leaving and reopening the chat within the same consultation still restores it.
 The previous chat and its messages remain in the backend as history.
 
 Manual regression: select a hospital, complete or partially answer the chat,
-cancel the consultation, select the same hospital/specialty again and open chat.
+cancel the consultation, and select the same hospital/specialty again. Chat opens automatically.
 It must show only the initial greeting and allow writing. Leave and reopen this
 new chat to confirm that its messages are restored. Check that a rejected
 cancellation or hospital selection does not discard the existing chat.
@@ -107,7 +148,9 @@ Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-mu
 La app muestra el registro de respuestas y la información de atención, sin anunciar preclasificaciones ni niveles de prioridad al paciente. El backend comparte esa regla con Gemini para texto, audio y cierre. Al activar voz con el saludo inicial ya visible, el backend pide una transición breve («Te escucho») y no envía otra transcripción del saludo. Las preguntas posteriores y las respuestas del paciente siguen llegando normalmente. Los avisos de atención urgente se mantienen.
 
 
-La entrevista terminada permanece cerrada mientras el backend procesa y si agota sus reintentos. `finalizado` indica que la entrevista cerró; `estadoClasificacion` indica por separado si la clasificación está `NO_SOLICITADA`, `PENDIENTE`, `FALLIDA` o `COMPLETADA`. Una respuesta antigua que omita `estadoClasificacion` permanece como cierre desconocido, porque `finalizado` solo indica que la entrevista cerró y una estimación de cola puede existir antes de clasificar. `PENDIENTE` muestra un aviso breve mientras el backend realiza sus reintentos automáticos; el cliente consulta el estado por GET durante un plazo acotado. `FALLIDA` es terminal: la app informa que las respuestas quedaron guardadas, sin pedir al paciente que reintente el procesamiento. El origen `CIERRE_SIN_DATOS` identifica un cierre administrativo sin clasificación: el cliente sincroniza el chat por GET, mantiene `finalizado=true` y `estadoClasificacion=NO_SOLICITADA`, y no muestra una confirmación de envío, un fallo de procesamiento ni una tarjeta de atención. En voz, el evento `triage_finalizado` conserva `origenRespuesta` para aplicar la misma regla. El cierre de una clasificación completada no anuncia prioridad ni promete una derivación ya realizada.
+La entrevista terminada permanece cerrada mientras el backend procesa. `finalizado` indica que la entrevista cerró; `estadoClasificacion` indica por separado si la clasificación está `NO_SOLICITADA`, `PENDIENTE`, `FALLIDA`, `PARCIAL` o `COMPLETADA`. Una respuesta antigua que omita `estadoClasificacion` permanece como cierre desconocido, porque `finalizado` solo indica que la entrevista cerró y una estimación de cola puede existir antes de clasificar. `PENDIENTE` muestra un aviso breve mientras el backend realiza sus dos intentos automáticos; el cliente consulta el estado por GET en una ventana inicial de 200 segundos para cubrir las dos fases de unos 92 y 95 segundos. Después continúa con consultas más espaciadas mientras la app está en primer plano; `proximoReintentoEn` guía la espera de API, limitada a 30 segundos. Al volver al primer plano hace un GET inmediato. Nunca repite el POST del mensaje. El estado `NO_DISPONIBLE` de servidores antiguos no queda pegado en la caché ni bloquea el chat después de una lectura GET exitosa.
+
+Los campos aditivos `cierreParcial`, `estadoRecuperacion` (`SIN_RECUPERACION`, `REINTENTANDO`, `ESPERANDO_API`), `proximoReintentoEn` y `versionEstado` acompañan los DTO del chat. El cliente aplica primero la versión remota más nueva y usa el ID de solicitud para impedir que una respuesta vieja libere un mensaje nuevo. `cierreParcial` por sí solo no termina la espera: si `estadoClasificacion` sigue en `PENDIENTE`, la app conserva el seguimiento hasta recibir un estado terminal. `PARCIAL` confirma que las respuestas quedaron guardadas, pero no se presenta como triage completado ni muestra una estimación de atención. En voz, `entrevista_finalizada` significa que se aceptó el cierre; `estado_chat` entrega snapshots pendientes o en recuperación y `procesamiento_finalizado` lleva el snapshot terminal parcial. `triage_finalizado` queda reservado para un resultado válido. El origen `CIERRE_SIN_DATOS` sigue siendo un cierre administrativo sin clasificación: el cliente mantiene `finalizado=true` y `estadoClasificacion=NO_SOLICITADA`, sin mostrar una tarjeta de atención. El cierre de una clasificación completada no anuncia prioridad ni promete una derivación ya realizada.
 
 
 ### Estado de espera y cierre de la entrevista por voz
@@ -120,11 +163,13 @@ solos. El micrófono y la interrupción siguen disponibles. Al recibirse una
 pregunta útil, la pantalla indica que está escuchando.
 
 Cuando el backend acepta el cierre, la app muestra el procesamiento mientras la
-sesión de voz sigue activa. Si el socket termina antes de confirmar un resultado,
-la entrevista queda cerrada con estado desconocido y un control para consultar
-el estado. Los errores de una entrevista abierta ofrecen retomar voz o
-continuar por texto; una entrevista cerrada no ofrece volver a responder ni
-reprocesar manualmente la clasificación.
+sesión de voz sigue activa. Si el socket entrega `estado_chat`, la app aplica ese
+snapshot con la misma reconciliación por versión e inicia el seguimiento GET del
+turno pendiente al terminar la voz. Un resultado terminal parcial detiene el
+audio y confirma que las respuestas quedaron guardadas sin presentarlas como
+clasificación completa. Los errores de una entrevista abierta ofrecen retomar
+voz o continuar por texto; una entrevista cerrada no ofrece volver a responder
+ni reprocesar manualmente la clasificación.
 
 
 ### Interrupciones de voz y protección contra eco (Android)
@@ -180,10 +225,11 @@ guardó el turno y continuará procesándolo; el cliente obtiene el historial ca
 del DTO y consulta su estado sin agregar una burbuja de respuesta propia. Ante un
 resultado ambiguo, la app consulta por GET y nunca repite automáticamente el POST.
 Un 401/403 requiere revisar la sesión, 404 indica un chat no encontrado y 429 pide
-esperar. Si no se puede confirmar el estado después de 120 segundos, la pantalla deja
-de mostrar el indicador de escritura y ofrece una consulta de estado que solo usa GET.
-`NO_DISPONIBLE` informa que el asistente no pudo continuar y deshabilita texto y voz,
-sin marcar la entrevista como cerrada.
+esperar. El cliente consulta rápido durante 200 segundos para cubrir las dos fases de
+recuperación del backend, y después sigue con GETs espaciados sin mantener el indicador
+de escritura. Si la API sigue sin responder, vuelve a consultar al regresar la app al
+primer plano; nunca repite el POST. Un `NO_DISPONIBLE` legado sin estado de
+recuperación no se conserva como bloqueo terminal después de un GET exitoso.
 
 ### Disposición de la UI y barras del sistema
 
@@ -234,36 +280,40 @@ la compilación iOS requieren sus respectivos dispositivos/entornos.
 `POST /api/chat/{id}/mensajes` envía un UUID `solicitudId`. El backend responde HTTP
 202 con el DTO completo después de guardar el mensaje del paciente y aceptar el turno
 para procesamiento. `GET /api/chat/{id}` devuelve el mismo estado: `estadoTurnoTexto`
-(`SIN_SOLICITAR`, `PENDIENTE`, `COMPLETADA` o `NO_DISPONIBLE`), el UUID asociado y la
-cantidad de intentos. La solicitud UUID y el texto se conservan en la copia de
-navegación en memoria hasta un estado terminal.
+(`SIN_SOLICITAR`, `PENDIENTE`, `COMPLETADA` o el legado `NO_DISPONIBLE`), el UUID
+asociado, cantidad de intentos, `cierreParcial`, `estadoRecuperacion`
+(`SIN_RECUPERACION`, `REINTENTANDO`, `ESPERANDO_API`), `proximoReintentoEn` UTC y
+`versionEstado`. `COMPLETADA` resuelve el turno de mensaje y no implica una respuesta
+BOT ni una clasificación completa. La solicitud UUID y el texto se conservan en la
+copia de navegación en memoria hasta un estado terminal.
 
 Después de HTTP 202, y también al volver a abrir un chat, la app restaura el progreso
-desde GET y consulta cada 1,5 s durante un máximo de 120 s. Solo reemplaza el historial
-con una respuesta terminal del servidor. Un POST con respuesta perdida se reconcilia
-por GET usando el UUID; el cliente nunca repite ese POST. Si el estado sigue sin
-confirmarse tras el plazo, deja de mostrar la escritura y ofrece «Consultar estado».
-Ese control solo hace GET. Mientras el turno esté pendiente o su estado sea desconocido,
-texto y voz permanecen bloqueados para impedir mensajes duplicados.
+desde GET. Consulta rápido durante 200 s para cubrir los dos intentos y las fases de
+unos 92 y 95 s del backend, y luego sigue con GETs más espaciados en primer plano.
+`proximoReintentoEn` guía la espera de API, limitada a 30 s. Al pausar la app se
+suspenden las consultas; al volver, se hace un GET inmediato y se reanuda el seguimiento.
+Un POST con respuesta perdida se reconcilia por GET usando el UUID; el cliente nunca
+repite ese POST. Después de la ventana rápida no queda un indicador de escritura girando.
+Mientras el turno pendiente esté guardado o la API no pueda confirmarlo, texto y voz
+permanecen bloqueados para impedir mensajes duplicados.
 
-`NO_DISPONIBLE` es terminal para el turno de texto: la app muestra que el asistente
-no está disponible y deshabilita todos los controles del chat. No cambia
-`finalizado` ni `estadoClasificacion`; la entrevista no se marca como cerrada por
-este error. La respuesta HTTP 200 del backend anterior sigue aceptándose como una
-respuesta inmediata con su burbuja BOT tradicional.
+`NO_DISPONIBLE` de un servidor antiguo ya no se trata como bloqueo terminal pegado:
+si un GET exitoso no trae estado de recuperación activo, la app descarta la referencia
+de solicitud vieja y permite continuar. Si la API real no responde, conserva el turno
+UUID y reintenta consultas al volver a primer plano, sin reenviar el mensaje. La respuesta
+HTTP 200 del backend anterior sigue aceptándose como una respuesta inmediata con su
+burbuja BOT tradicional.
 
-En el cierre de voz, `entrevista_finalizada` muestra un único aviso breve de procesamiento.
-La app consulta automáticamente `GET /api/chat/{id}` cada 1,5 s, hasta 80 lecturas, con
-timeout de 2 s por lectura y un plazo total de 120 s. No se muestra una recarga durante
-la espera normal. El seguimiento automático permanece acotado a 120 s, para cubrir
-los dos intentos máximos del backend y su espera entre intentos. Si no confirma el resultado en ese
-plazo, ofrece «Consultar estado»; esto solo hace GET y no reenvía respuestas.
-`PENDIENTE` permanece mientras el backend reintenta. `FALLIDA` aparece únicamente
-cuando los intentos automáticos se agotaron y se presenta como resultado terminal,
-sin una acción de reintento para el paciente. Al agotar la espera, la app sale del estado de voz, confirma
-los fragmentos locales y cancela únicamente el canal agotado del cliente; el backend
-continúa clasificando. Un resultado desconocido ofrece «Consultar estado» sin volver
-al spinner cuando termina el socket. Estas reglas también se aplican al reingresar.
+En el cierre de voz, `entrevista_finalizada` señala que se aceptó el cierre; la app
+consulta automáticamente el snapshot del chat hasta el resultado terminal. El evento
+`estado_chat` entrega un snapshot pendiente o en recuperación; la app lo aplica con la
+misma reconciliación por versión e inicia el polling del turno si la voz terminó por
+indisponibilidad de API. `procesamiento_finalizado` entrega el snapshot terminal parcial:
+se detiene el audio, se muestran las respuestas guardadas sin presentar el triage como
+completo ni dejar un spinner. `triage_finalizado` sigue reservado a un resultado válido,
+aunque no incluya una estimación de atención. `PARCIAL` es terminal y no muestra una
+tarjeta de atención. No hay controles manuales para reintentar o forzar el cierre.
+Estas reglas también se aplican al reingresar.
 
 Al salir se conserva en memoria la última conversación visible, incluidos los fragmentos
 de transcripción abiertos y el estado de cierre. Al volver al mismo chat se restaura

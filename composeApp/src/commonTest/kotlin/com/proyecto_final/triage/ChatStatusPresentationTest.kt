@@ -24,6 +24,7 @@ class ChatStatusPresentationTest {
         assertEquals(ChatClassificationPresentation.NO_SOLICITADA, presentacionClasificacionChat(false, "NO_SOLICITADA"))
         assertEquals(ChatClassificationPresentation.PROCESANDO, presentacionClasificacionChat(true, "PENDIENTE"))
         assertEquals(ChatClassificationPresentation.FALLIDA, presentacionClasificacionChat(true, "FALLIDA"))
+        assertEquals(ChatClassificationPresentation.PARCIAL, presentacionClasificacionChat(true, "PARCIAL"))
         assertEquals(ChatClassificationPresentation.COMPLETADA, presentacionClasificacionChat(true, "COMPLETADA"))
     }
 

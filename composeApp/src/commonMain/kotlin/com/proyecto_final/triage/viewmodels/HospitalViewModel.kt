@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.proyecto_final.triage.network.HospitalCercanoDTO
+import com.proyecto_final.triage.network.IngresoRemotoSancionado
 import com.proyecto_final.triage.network.elegirHospital
 import com.proyecto_final.triage.network.obtenerHospitalesCercanos
 import com.proyecto_final.triage.screens.Hospital
@@ -27,6 +28,14 @@ class HospitalesViewModel : ViewModel() {
 
     var hospitalSeleccionado by mutableStateOf(false)
         private set
+
+    var errorSeleccion by mutableStateOf<String?>(null)
+        private set
+
+    var seleccionEnCurso by mutableStateOf(false)
+        private set
+
+    internal val sancionPaciente = SancionPacienteState()
 
     var ordenSeleccionado by mutableStateOf(OrdenHospital.DISTANCIA)
         private set
@@ -88,27 +97,29 @@ class HospitalesViewModel : ViewModel() {
         hospital: Hospital,
         codigoEspecialidad: String
     ) {
-        println("HOSPITAL SELECCIONADO: ${hospital.nombre}")
-        println("PLACE ID: ${hospital.placeId}")
-        println("ESPECIALIDAD: $codigoEspecialidad")
+        val placeId = hospital.placeId ?: return
+        if (seleccionEnCurso || sancionPaciente.datos?.vigente == true) return
 
+        seleccionEnCurso = true
+        errorSeleccion = null
         viewModelScope.launch {
-
-            val placeId = hospital.placeId
-                ?: return@launch
-
-            val resultado = elegirHospital(
-                placeId = placeId,
-                codigoEspecialidad = codigoEspecialidad
-            )
-
-            resultado
-                .onSuccess {
-                    hospitalSeleccionado = true
-                }
-                .onFailure {
-                    // Error
-                }
+            try {
+                elegirHospital(placeId, codigoEspecialidad)
+                    .onSuccess { hospitalSeleccionado = true }
+                    .onFailure { error ->
+                        if (error is IngresoRemotoSancionado) {
+                            sancionPaciente.registrar(error.sancion)
+                        } else {
+                            errorSeleccion = error.message ?: "No pudimos confirmar el hospital seleccionado."
+                        }
+                    }
+            } finally {
+                seleccionEnCurso = false
+            }
         }
+    }
+
+    fun descartarErrorSeleccion() {
+        errorSeleccion = null
     }
 }

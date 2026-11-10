@@ -43,6 +43,7 @@ enum class EstadoConsulta {
     PRETRIAGE_FINALIZADO,
     PRETRIAGE_EN_PROCESO,
     EN_COLA,
+    EN_REVISION,
     LLAMADO,
     EN_ESPERA,
     ATRASADO,
@@ -54,6 +55,7 @@ enum class EstadoConsulta {
 @Serializable
 enum class EstadoEntradaCola {
     EN_COLA,
+    EN_REVISION,
     LLAMADO,
     EN_ESPERA,
     ATRASADO,
