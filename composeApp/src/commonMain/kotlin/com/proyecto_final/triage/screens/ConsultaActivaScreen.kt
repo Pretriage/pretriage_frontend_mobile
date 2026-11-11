@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -29,9 +30,9 @@ import cafe.adriel.voyager.core.annotation.ExperimentalVoyagerApi
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.jetpack.navigatorViewModel
+import io.ktor.http.encodeURLParameter
 import com.proyecto_final.triage.components.CountdownText
 import com.proyecto_final.triage.components.Spinner
-import com.proyecto_final.triage.location.obtenerUbicacionActual
 import com.proyecto_final.triage.network.estadoConsulta.EstadoConsultaPacienteDTO
 import com.proyecto_final.triage.network.estadoConsulta.EstadoEntradaCola
 import com.proyecto_final.triage.network.estadoConsulta.HospitalSeleccionadoResponse
@@ -56,6 +57,24 @@ import kotlin.time.Instant
 
 private const val POLLING_INTERVAL_MS = 5_000L
 
+/**
+ * Link de Google Maps con la ruta en transporte público hasta el hospital elegido.
+ * Sin origen, Google Maps parte de la ubicación actual del paciente.
+ */
+private fun urlGoogleMaps(hospital: HospitalSeleccionadoResponse): String {
+    val destino = listOfNotNull(hospital.nombre, hospital.direccion)
+        .filter { it.isNotBlank() }
+        .joinToString(", ")
+    val placeId = hospital.placeId
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "&destination_place_id=${it.encodeURLParameter()}" }
+        ?: ""
+    return "https://www.google.com/maps/dir/?api=1" +
+        "&destination=${destino.encodeURLParameter()}" +
+        placeId +
+        "&travelmode=transit"
+}
+
 private val ACCENT = Color(0xFF5BB8D4)
 
 private val BUTTON_BACKGROUND = Color(0xFFE3F2FD)
@@ -73,7 +92,7 @@ class ConsultaActivaScreen : Screen {
 
         val navigator = LocalNavigator.current
 
-        val scope = rememberCoroutineScope()
+        val uriHandler = LocalUriHandler.current
 
         val viewModel = remember {
             ConsultaActivaViewModel()
@@ -171,53 +190,12 @@ class ConsultaActivaScreen : Screen {
             },
 
 
+            // "Cómo llegar" abre la ruta en Google Maps (app o web) en vez de una pantalla propia.
             onComoLlegar = {
 
-                scope.launch {
-
-                    val ubicacion =
-                        obtenerUbicacionActual()
-
-                    val hospitalSeleccionado =
-                        viewModel.hospital
-
-                    if (
-                        ubicacion != null &&
-                        hospitalSeleccionado != null
-                    ) {
-
-                        val hospital = Hospital(
-
-                            idHospital =
-                                hospitalSeleccionado.idHospital,
-
-                            placeId =
-                                hospitalSeleccionado.placeId,
-
-                            nombre =
-                                hospitalSeleccionado.nombre,
-
-                            direccion =
-                                hospitalSeleccionado.direccion
-                                    ?: "",
-
-                            especialidades =
-                                emptyList(),
-
-                            tiempoEstimadoArriboMejorRuta =
-                                null
-                        )
-
-                        navigator?.push(
-
-                            RutasHospitalScreen(
-
-                                hospital = hospital,
-
-                                ubicacion =
-                                    "${ubicacion.latitude},${ubicacion.longitude}"
-                            )
-                        )
+                viewModel.hospital?.let { hospitalSeleccionado ->
+                    runCatching {
+                        uriHandler.openUri(urlGoogleMaps(hospitalSeleccionado))
                     }
                 }
             },

@@ -44,44 +44,6 @@ suspend fun obtenerHospitalesCercanos(
     }
 }
 
-suspend fun obtenerTiempoArriboHospital(
-    idHospital: Long,
-    transporte: String,
-    latitud: Double,
-    longitud: Double
-): Result<List<TiempoEstimadoArriboHospitalResponse>> {
-    return try {
-
-        val response = httpClient.get(
-            "${AppConfig.baseUrl}/api/hospitales/$idHospital/tiempo-arribo"
-        ) {
-            parameter("transporte", transporte)
-            parameter("latitud", latitud)
-            parameter("longitud", longitud)
-        }
-
-        if (response.status == HttpStatusCode.OK) {
-
-            Result.success(
-                response.body<List<TiempoEstimadoArriboHospitalResponse>>()
-            )
-
-        } else {
-
-            val errorBody = response.bodyAsText()
-
-            Result.failure(
-                Exception(
-                    parsearMensajeError(errorBody)
-                )
-            )
-        }
-
-    } catch (e: Exception) {
-        Result.failure(e)
-    }
-}
-
 suspend fun elegirHospital(
     placeId: String,
     codigoEspecialidad: String
