@@ -9,7 +9,11 @@ data class EstadoConsultaPacienteDTO(
     val estadoEntradaCola: String? = null,
     val tipoPausa: String? = null,
     val fechaHoraLimiteRespuesta: String? = null,
-    val tiempoEstimadoAtencion: TiempoEstimadoAtencionResponse? = null
+    val tiempoEstimadoAtencion: TiempoEstimadoAtencionResponse? = null,
+    /** Veces que todavía se puede pedir más tiempo para llegar después de no presentarse al llamado. */
+    val extensionesRestantes: Int = 0,
+    /** Minutos que suma cada pedido de más tiempo al final del plazo vigente. */
+    val minutosPorExtension: Int = 30
 )
 
 @Serializable

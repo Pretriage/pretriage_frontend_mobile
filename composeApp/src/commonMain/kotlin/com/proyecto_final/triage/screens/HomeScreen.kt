@@ -458,7 +458,8 @@ fun HomeContent(
                 Spinner(color = MENU_BLUE)
             }
 
-            is HomeState.Success -> {
+            // Durante la atención con el médico el chat ya no está disponible.
+            is HomeState.Success -> if (state.estado.estadoEntradaCola != "EN_ATENCION") {
                 MenuCard(
                     icon = Icons.AutoMirrored.Filled.Chat,
                     titulo = "Chat interactivo",

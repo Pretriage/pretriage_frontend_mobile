@@ -112,6 +112,8 @@ class ConsultaActivaScreen : Screen {
 
             actionError = viewModel.actionError,
 
+            actionMessage = viewModel.actionMessage,
+
             hospital = viewModel.hospital,
 
             isAusentarmeLoading =
@@ -247,6 +249,8 @@ fun ConsultaActivaContent(
 
     actionError: String?,
 
+    actionMessage: String?,
+
     hospital: HospitalSeleccionadoResponse?,
 
     isAusentarmeLoading: Boolean,
@@ -378,6 +382,7 @@ fun ConsultaActivaContent(
                     estado = state.estado,
                     hospital = hospital,
                     actionError = actionError,
+                    actionMessage = actionMessage,
                     isAusentarmeLoading = isAusentarmeLoading,
                     isEstoyAtrasadoLoading = isEstoyAtrasadoLoading,
                     isSigoAsistiendoLoading = isSigoAsistiendoLoading,
@@ -550,6 +555,8 @@ private fun EstadoConsultaSection(
 
     actionError: String?,
 
+    actionMessage: String?,
+
     isAusentarmeLoading: Boolean,
 
     isEstoyAtrasadoLoading: Boolean,
@@ -594,6 +601,22 @@ private fun EstadoConsultaSection(
      * ERROR DE ACCIÓN
      * ============================================================
      */
+
+    if (actionMessage != null && actionError == null) {
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9))
+        ) {
+            Text(
+                text = actionMessage,
+                modifier = Modifier.padding(12.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF2E7D32)
+            )
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+    }
 
     if (actionError != null) {
 
@@ -1073,121 +1096,61 @@ private fun EstadoConsultaSection(
 
                 /*
                  * ====================================================
-                 * AUSENTE AL LLAMADO
+                 * AUSENTE AL LLAMADO / PIDIÓ MÁS TIEMPO
+                 *
+                 * El sistema da un horario límite para llegar. El paciente
+                 * puede avisar que ya llegó o pedir más tiempo: cada pedido
+                 * suma minutos al final del plazo vigente, hasta un máximo.
                  * ====================================================
                  */
 
-                estadoCola ==
-                        EstadoEntradaCola.EN_ESPERA &&
-                        tipoPausa ==
-                        TipoPausaCola.AUSENTE_AL_LLAMADO -> {
+                estadoCola == EstadoEntradaCola.ATRASADO ||
+                        (estadoCola == EstadoEntradaCola.EN_ESPERA &&
+                                tipoPausa == TipoPausaCola.AUSENTE_AL_LLAMADO) -> {
+
+                    val pidioMasTiempo = estadoCola == EstadoEntradaCola.ATRASADO
+                    val horaLimite = formatHora(estado.fechaHoraLimiteRespuesta)
+                    val restantes = estado.extensionesRestantes
+                    val avisoExtensiones = when {
+                        restantes <= 0 -> "Ya no podés pedir más tiempo."
+                        restantes == 1 -> "Podés pedir ${estado.minutosPorExtension} minutos más una vez más."
+                        else -> "Si vas a demorar, podés pedir ${estado.minutosPorExtension} minutos más (hasta $restantes veces)."
+                    }
 
                     CardConCountDown(
-                        titulo = "No estabas cuando te llamamos",
+                        titulo = if (pidioMasTiempo) "Te esperamos un rato más" else "No estabas cuando te llamaron",
                         subtitulo = "Tu turno sigue activo",
-                        descripcion = "Tenés una hora para llegar. Si no llegás dentro de ese tiempo, tu turno se cancelará.",
+                        descripcion = "Tenés hasta las $horaLimite para llegar. Cuando estés en el hospital, " +
+                            "tocá «Ya llegué» y volvés a la cola antes que los pacientes con tu misma prioridad. " +
+                            "$avisoExtensiones Si no llegás a tiempo, tu turno se cancela.",
                         fechaHoraLimite = estado.fechaHoraLimiteRespuesta!!,
-                        mostrarExpirado= mostrarExpirado,
+                        mostrarExpirado = mostrarExpirado,
                         onFinishCountDown = { mostrarExpirado = true }
                     ) {
-                        BotonCeleste(
-
-                            texto =
-                                "Estoy atrasado, sigo esperando",
-
-                            loading =
-                                isEstoyAtrasadoLoading,
-
-                            onClick =
-                                onEstoyAtrasado
-                        )
-                    }
-                }
-
-
-                /*
-                 * ====================================================
-                 * ATRASADO
-                 * ====================================================
-                 */
-
-                estadoCola ==
-                        EstadoEntradaCola.ATRASADO -> {
-
-                    CardEstadoConsulta(
-
-                        titulo =
-                            "Turno atrasado",
-
-                        subtitulo =
-                            "Todavía podés llegar"
-                    ) {
-
-                        Text(
-
-                            text =
-                                "Tenés tiempo hasta las ${
-                                    formatHora(
-                                        estado.fechaHoraLimiteRespuesta
-                                    )
-                                } para llegar o confirmar que seguís en camino.",
-
-                            style =
-                                MaterialTheme.typography.bodySmall,
-
-                            color =
-                                MaterialTheme.colorScheme
-                                    .onSurfaceVariant
-                        )
-
-
-                        Spacer(
-                            modifier =
-                                Modifier.height(16.dp)
-                        )
-
-
                         Row(
-
-                            modifier =
-                                Modifier.fillMaxWidth(),
-
-                            horizontalArrangement =
-                                Arrangement.spacedBy(8.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(IntrinsicSize.Min),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-
+                            if (restantes > 0) {
+                                BotonCeleste(
+                                    texto = "Necesito ${estado.minutosPorExtension} min más",
+                                    loading = if (pidioMasTiempo) isSigoAsistiendoLoading else isEstoyAtrasadoLoading,
+                                    onClick = if (pidioMasTiempo) onSigoAsistiendo else onEstoyAtrasado,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                )
+                            }
                             BotonCeleste(
-
-                                texto =
-                                    "Sigo en camino",
-
-                                loading =
-                                    isSigoAsistiendoLoading,
-
-                                onClick =
-                                    onSigoAsistiendo,
-
-                                modifier =
-                                    Modifier.weight(1f)
-                            )
-
-
-                            BotonCeleste(
-
-                                texto =
-                                    "Ya llegué",
-
-                                icono =
-                                    Icons.Filled.CheckCircle,
-
-                                loading =
-                                    isLlegueLoading,
-
-                                onClick =
-                                    onLlegue,
-
-                                modifier =
-                                    Modifier.weight(1f)
+                                texto = "Ya llegué",
+                                icono = Icons.Filled.CheckCircle,
+                                loading = isLlegueLoading,
+                                onClick = onLlegue,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
                             )
                         }
                     }
@@ -1266,7 +1229,7 @@ private fun EstadoConsultaSection(
                             "Estás siendo atendido",
 
                         subtitulo =
-                            "Tu consulta está en curso."
+                            "Tu consulta está en curso. El chat ya no está disponible durante la atención."
                     ) {
 
                         if (hospital?.nombreSector?.isNotBlank() == true) {

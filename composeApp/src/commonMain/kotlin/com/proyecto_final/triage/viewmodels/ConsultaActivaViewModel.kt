@@ -1,5 +1,6 @@
 package com.proyecto_final.triage.viewmodels
 
+import com.proyecto_final.triage.utils.formatHora
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -58,6 +59,10 @@ class ConsultaActivaViewModel : ViewModel() {
         private set
 
     var actionError by mutableStateOf<String?>(null)
+        private set
+
+    /** Confirmación visible de la última acción (por ejemplo, cuánto tiempo se sumó). */
+    var actionMessage by mutableStateOf<String?>(null)
         private set
 
     var hospital by mutableStateOf<HospitalSeleccionadoResponse?>(null)
@@ -128,6 +133,7 @@ class ConsultaActivaViewModel : ViewModel() {
         viewModelScope.launch {
 
             actionError = null
+            actionMessage = null
             isAusentarmeLoading = true
 
             ausentarmeApi()
@@ -148,11 +154,13 @@ class ConsultaActivaViewModel : ViewModel() {
         viewModelScope.launch {
 
             actionError = null
+            actionMessage = null
             isEstoyAtrasadoLoading = true
 
             estoyAtrasadoApi()
                 .onSuccess { estado ->
                     aplicarNuevoEstado(estado)
+                    actionMessage = mensajeTiempoExtendido(estado)
                 }
                 .onFailure { error ->
                     actionError =
@@ -168,11 +176,13 @@ class ConsultaActivaViewModel : ViewModel() {
         viewModelScope.launch {
 
             actionError = null
+            actionMessage = null
             isSigoAsistiendoLoading = true
 
             sigoAsistiendoApi()
                 .onSuccess { estado ->
                     aplicarNuevoEstado(estado)
+                    actionMessage = mensajeTiempoExtendido(estado)
                 }
                 .onFailure { error ->
                     actionError =
@@ -188,11 +198,13 @@ class ConsultaActivaViewModel : ViewModel() {
         viewModelScope.launch {
 
             actionError = null
+            actionMessage = null
             isLlegueLoading = true
 
             llegueApi()
                 .onSuccess { estado ->
                     aplicarNuevoEstado(estado)
+                    actionMessage = "Listo, volviste a la cola. Como ya te habían llamado, vas primero entre los pacientes con tu misma prioridad."
                 }
                 .onFailure { error ->
                     actionError =
@@ -208,6 +220,7 @@ class ConsultaActivaViewModel : ViewModel() {
         viewModelScope.launch {
 
             actionError = null
+            actionMessage = null
             isCancelarSeleccionLoading = true
             cancelacionExitosa = false
 
@@ -224,6 +237,11 @@ class ConsultaActivaViewModel : ViewModel() {
 
             isCancelarSeleccionLoading = false
         }
+    }
+
+    private fun mensajeTiempoExtendido(estado: EstadoConsultaPacienteDTO): String {
+        val hora = formatHora(estado.fechaHoraLimiteRespuesta)
+        return "Listo, sumamos ${estado.minutosPorExtension} minutos. Ahora tenés hasta las $hora para llegar."
     }
 
     private fun aplicarNuevoEstado(
