@@ -54,7 +54,7 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
-private const val POLLING_INTERVAL_MS = 20_000L
+private const val POLLING_INTERVAL_MS = 5_000L
 
 private val ACCENT = Color(0xFF5BB8D4)
 
@@ -1079,13 +1079,15 @@ private fun EstadoConsultaSection(
                     CardConCountDown(
                         titulo = "Estás en pausa",
                         subtitulo = "Te ausentaste temporalmente",
-                        descripcion = "Tenés hasta 60 minutos para volver antes de que se cancele tu turno.",
+                        descripcion = "Tenés hasta las ${formatHora(estado.fechaHoraLimiteRespuesta)} para volver. " +
+                            "Cuando vuelvas, tocá «Ya volví» y recuperás tu lugar en la cola. " +
+                            "Si no volvés a tiempo, tu turno se cancela.",
                         fechaHoraLimite = estado.fechaHoraLimiteRespuesta!!,
                         mostrarExpirado= mostrarExpirado,
                         onFinishCountDown = { mostrarExpirado = true }
                     ) {
                         BotonCeleste(
-                            texto ="Llegué, volver a la cola",
+                            texto = "Ya volví",
                             icono = Icons.Filled.CheckCircle,
                             loading = isLlegueLoading,
                             onClick = onLlegue

@@ -24,11 +24,13 @@ import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,9 +41,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
+import io.ktor.http.encodeURLParameter
 import com.proyecto_final.triage.components.CommonHeader
 import com.proyecto_final.triage.components.ErrorBanner
 import com.proyecto_final.triage.components.Spinner
@@ -62,6 +66,8 @@ class RutasHospitalScreen(
     override fun Content() {
 
         val navigator = LocalNavigator.current
+
+        val uriHandler = LocalUriHandler.current
 
         val viewModel = remember {
             RutasHospitalViewModel()
@@ -94,20 +100,51 @@ class RutasHospitalScreen(
 
             is RutasHospitalState.Error -> {
 
-                ErrorBanner(
-                    message = state.message,
-                    buttonText = "Reintentar",
-                    icon = Icons.Filled.ErrorOutline,
-                    onButtonClick = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    ErrorBanner(
+                        message = state.message,
+                        buttonText = "Reintentar",
+                        icon = Icons.Filled.ErrorOutline,
+                        onButtonClick = {
 
-                        viewModel.cargarRutas(
-                            idHospital = hospital.idHospital,
-                            transporte = "transporte-publico",
-                            latitud = latitud,
-                            longitud = longitud
-                        )
+                            viewModel.cargarRutas(
+                                idHospital = hospital.idHospital,
+                                transporte = "transporte-publico",
+                                latitud = latitud,
+                                longitud = longitud
+                            )
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Si no podemos calcular la ruta (por ejemplo, Google limitó las consultas),
+                    // el paciente igual puede ver cómo llegar en la app de Google Maps.
+                    Button(
+                        onClick = {
+                            runCatching {
+                                uriHandler.openUri(urlGoogleMaps(hospital, latitud, longitud))
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        Text("Abrir en Google Maps")
                     }
-                )
+
+                    OutlinedButton(
+                        onClick = { navigator?.pop() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        Text("Volver")
+                    }
+                }
             }
 
             is RutasHospitalState.Success -> {
@@ -126,6 +163,26 @@ class RutasHospitalScreen(
             }
         }
     }
+}
+
+
+/**
+ * Link de Google Maps con la ruta en transporte público hasta el hospital.
+ * No usa la cuota de la API: lo abre la app (o la web) de Google Maps.
+ */
+fun urlGoogleMaps(hospital: Hospital, latitud: Double, longitud: Double): String {
+    val destino = listOf(hospital.nombre, hospital.direccion)
+        .filter { it.isNotBlank() }
+        .joinToString(", ")
+    val placeId = hospital.placeId
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "&destination_place_id=${it.encodeURLParameter()}" }
+        ?: ""
+    return "https://www.google.com/maps/dir/?api=1" +
+        "&origin=$latitud,$longitud" +
+        "&destination=${destino.encodeURLParameter()}" +
+        placeId +
+        "&travelmode=transit"
 }
 
 
