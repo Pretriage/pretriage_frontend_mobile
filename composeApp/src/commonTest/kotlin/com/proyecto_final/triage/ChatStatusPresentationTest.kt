@@ -63,7 +63,7 @@ class ChatStatusPresentationTest {
             textoPanelVoz(EstadoVoz.ESCUCHANDO, ModoEntradaVoz.POR_TURNOS, false, false)
         )
         assertEquals(
-            "El asistente está hablando. Podés interrumpirlo.",
+            "El asistente está hablando. Respondé cuando termine.",
             textoPanelVoz(EstadoVoz.ESCUCHANDO, ModoEntradaVoz.INTERRUMPIBLE, false, true)
         )
         assertEquals(

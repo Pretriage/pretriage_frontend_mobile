@@ -43,8 +43,9 @@ fun textoPanelVoz(
     EstadoVoz.CONECTANDO -> "Conectando con el asistente..."
     EstadoVoz.ESCUCHANDO -> when {
         procesandoRespuesta -> "Procesando tu respuesta..."
+        // Los ruidos ya no interrumpen al asistente (NO_INTERRUPTION en el backend): se responde al terminar.
         asistenteHablando && modoEntrada == ModoEntradaVoz.INTERRUMPIBLE ->
-            "El asistente está hablando. Podés interrumpirlo."
+            "El asistente está hablando. Respondé cuando termine."
         asistenteHablando -> "El asistente está respondiendo. Enseguida te escucha."
         modoEntrada == ModoEntradaVoz.INTERRUMPIBLE ->
             "El micrófono está activo. Podés responder cuando quieras."

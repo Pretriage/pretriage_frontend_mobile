@@ -651,6 +651,15 @@ private fun PanelVoz(
                 }
             }
 
+            // Sin auriculares el celular capta más ruido ambiente y el propio parlante.
+            if (estado == EstadoVoz.ESCUCHANDO && modoEntrada == ModoEntradaVoz.POR_TURNOS) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Si estás en un lugar ruidoso, usá auriculares y hablá cerca del micrófono.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

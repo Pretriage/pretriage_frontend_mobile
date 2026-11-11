@@ -16,6 +16,7 @@ import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AudioEffect
+import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -106,6 +107,8 @@ private class AudioVozAndroid : AudioVoz {
     private var grabador: AudioRecord? = null
     private var hiloGrabacion: Thread? = null
     private var cancelacionEco: AcousticEchoCanceler? = null
+    // Supresor de ruido del dispositivo: VOICE_COMMUNICATION no lo garantiza en todos los fabricantes.
+    private var supresionRuido: NoiseSuppressor? = null
 
     @Volatile private var liberado = false
     private var reproductor: AudioTrack? = null
@@ -165,6 +168,18 @@ private class AudioVozAndroid : AudioVoz {
             runCatching { cancelacionEco?.release() }
             cancelacionEco = null
         }
+        // Reduce el ruido ambiente (guardias, salas de espera) antes de mandar el audio.
+        // No se activa el control automático de ganancia: en lugares ruidosos también sube el ruido.
+        supresionRuido = runCatching {
+            if (NoiseSuppressor.isAvailable()) {
+                NoiseSuppressor.create(nuevoGrabador.audioSessionId)?.also { efecto ->
+                    if (efecto.setEnabled(true) != AudioEffect.SUCCESS) {
+                        efecto.release()
+                        throw IllegalStateException("No se pudo activar el supresor de ruido")
+                    }
+                }
+            } else null
+        }.getOrNull()
 
         try {
             nuevoGrabador.startRecording()
@@ -172,6 +187,8 @@ private class AudioVozAndroid : AudioVoz {
             cancelacionEco?.release()
             cancelacionEco = null
             ecoHabilitado = false
+            runCatching { supresionRuido?.release() }
+            supresionRuido = null
             nuevoGrabador.release()
             finalizarSesionSiInactiva()
             return false
@@ -232,6 +249,8 @@ private class AudioVozAndroid : AudioVoz {
         runCatching { cancelacionEco?.release() }
         cancelacionEco = null
         ecoHabilitado = false
+        runCatching { supresionRuido?.release() }
+        supresionRuido = null
         actual?.release()
         synchronized(bloqueoReproduccion) { actualizarModoEntrada() }
         // La despedida puede seguir sonando: no restaurar ruta/modo antes de su fin.
