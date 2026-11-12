@@ -243,7 +243,7 @@ fun SelectLocationContent(
 
     // Dispara la búsqueda de sugerencias con debounce mientras el usuario escribe
     LaunchedEffect(direccion, usarUbicacionActual) {
-        if (usarUbicacionActual || direccion.isBlank() || direccion.length < 3 || direccionEncontrada != null) {
+        if (usarUbicacionActual || direccion.isBlank() || direccion.length < 3) {
             sugerencias = emptyList()
             cargandoSugerencias = false
             errorSugerencias = null
@@ -251,7 +251,7 @@ fun SelectLocationContent(
         }
         cargandoSugerencias = true
         errorSugerencias = null
-        delay(400.milliseconds) // debounce: espera a que el usuario deje de tipear
+        delay(200.milliseconds) // debounce: espera a que el usuario deje de tipear
         try {
             // Se prioriza cerca de la ubicación actual del usuario (si la tenemos)
             sugerencias = buscarSugerencias(direccion, ubicacionActual)
