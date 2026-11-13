@@ -88,7 +88,6 @@ fun ChatContent(
     val state by viewModel.state.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    var showConfirmDialog by remember { mutableStateOf(false) }
     var mostrarExito by remember { mutableStateOf(false) }
     val listaState = rememberLazyListState()
     val vozActiva = state.estadoVoz != EstadoVoz.INACTIVA
@@ -474,7 +473,7 @@ fun ChatContent(
                 IconButton(
                     onClick = {
                         if (puedeEnviar) {
-                            showConfirmDialog = true
+                            viewModel.enviarBorrador()
                         }
                     },
                     enabled = puedeEnviar,
@@ -495,32 +494,6 @@ fun ChatContent(
         }
     }
 
-    // Confirmación: se permite editar la consulta antes de enviarla
-    if (showConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showConfirmDialog = false },
-            title = { Text("Revisá tu consulta") },
-            text = {
-                Text(
-                    text = state.borrador,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showConfirmDialog = false
-                    viewModel.enviarBorrador()
-                }) {
-                    Text("Enviar")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirmDialog = false }) {
-                    Text("Editar")
-                }
-            }
-        )
-    }
 }
 
 @Composable
