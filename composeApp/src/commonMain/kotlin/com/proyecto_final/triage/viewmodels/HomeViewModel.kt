@@ -10,6 +10,7 @@ import com.proyecto_final.triage.network.estadoConsulta.ConsultaSseEvento
 import com.proyecto_final.triage.network.estadoConsulta.EstadoConsultaPacienteDTO
 import com.proyecto_final.triage.network.estadoConsulta.obtenerEstadoConsulta
 import com.proyecto_final.triage.network.estadoConsulta.obtenerHospitalSeleccionado
+import com.proyecto_final.triage.notificaciones.SeguimientoConsulta
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -80,6 +81,7 @@ class HomeViewModel : ViewModel() {
     }
 
     private fun aplicarEstado(estado: EstadoConsultaPacienteDTO) {
+        SeguimientoConsulta.sincronizar(estado)
         val tieneConsultaActiva =
             estado.estadoEntradaCola in ESTADOS_COLA_ACTIVA ||
                     estado.estadoConsulta in ESTADOS_CONSULTA_ACTIVA_SIN_COLA

@@ -39,6 +39,7 @@ fun App() {
                     LaunchedEffect(Unit) {
                         AuthState.reset()
                         TokenStorageProvider.instance.clearTokens()
+                        com.proyecto_final.triage.notificaciones.SeguimientoConsulta.detener()
                     }
                     ProvideNavigatorLifecycleKMPSupport {
                         Navigator(SignInScreen())

@@ -15,6 +15,7 @@ import com.proyecto_final.triage.network.estadoConsulta.TiempoEstimadoAtencionRe
 import com.proyecto_final.triage.network.estadoConsulta.TipoPausaCola
 import com.proyecto_final.triage.network.estadoConsulta.obtenerEstadoConsulta
 import com.proyecto_final.triage.network.estadoConsulta.obtenerHospitalSeleccionado
+import com.proyecto_final.triage.notificaciones.SeguimientoConsulta
 import com.proyecto_final.triage.network.estadoConsulta.ausentarme as ausentarmeApi
 import com.proyecto_final.triage.network.estadoConsulta.estoyAtrasado as estoyAtrasadoApi
 import com.proyecto_final.triage.network.estadoConsulta.sigoAsistiendo as sigoAsistiendoApi
@@ -224,6 +225,9 @@ class ConsultaActivaViewModel : ViewModel() {
             isCancelarSeleccionLoading = true
             cancelacionExitosa = false
 
+            // La cancela el propio paciente: no hace falta avisarle que se canceló.
+            SeguimientoConsulta.detener()
+
             cancelarSeleccionHospitalApi()
                 .onSuccess { estado ->
                     aplicarNuevoEstado(estado)
@@ -260,6 +264,8 @@ class ConsultaActivaViewModel : ViewModel() {
     private fun sincronizarSse(
         estado: EstadoConsultaPacienteDTO
     ) {
+        SeguimientoConsulta.sincronizar(estado)
+
         val consultaId = estado.consultaId
 
         val enCola =

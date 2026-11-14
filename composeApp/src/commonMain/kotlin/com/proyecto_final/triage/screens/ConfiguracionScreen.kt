@@ -36,6 +36,7 @@ class ConfiguracionScreen : Screen {
             onCambiarContrasenia = { navigator?.push(CambiarContraseniaScreen()) },
             onLogOut = {
                 TokenStorageProvider.instance.clearTokens()
+                com.proyecto_final.triage.notificaciones.SeguimientoConsulta.detener()
                 navigator?.popUntilRoot()
                 navigator?.replace(SignInScreen())
             }

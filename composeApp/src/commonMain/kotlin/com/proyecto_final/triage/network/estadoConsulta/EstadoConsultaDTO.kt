@@ -16,6 +16,26 @@ data class EstadoConsultaPacienteDTO(
     val minutosPorExtension: Int = 30
 )
 
+/**
+ * Evento "estado-consulta" del SSE: el backend lo manda cuando cambia el estado de la consulta
+ * (la llamaron, la marcaron ausente, se canceló...) y al conectarse, con el estado actual.
+ * [id] es el mismo cada vez que se repite el mismo estado, para no notificar dos veces.
+ */
+@Serializable
+data class CambioEstadoConsultaDTO(
+    val id: String? = null,
+    val consultaId: Long? = null,
+    val estado: String? = null,
+    val tipoPausa: String? = null,
+    val nombreHospital: String? = null,
+    val nombreSector: String? = null,
+    val nombreSala: String? = null,
+    val fechaHoraLimiteRespuesta: String? = null
+) {
+    val esTerminal: Boolean
+        get() = estado == "FINALIZADA" || estado == "CANCELADA"
+}
+
 @Serializable
 data class TiempoEstimadoAtencionResponse(
     val consultaId: Long? = null,

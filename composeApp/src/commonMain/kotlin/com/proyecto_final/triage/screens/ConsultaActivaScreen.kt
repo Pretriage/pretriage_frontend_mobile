@@ -37,6 +37,8 @@ import com.proyecto_final.triage.network.estadoConsulta.EstadoConsultaPacienteDT
 import com.proyecto_final.triage.network.estadoConsulta.EstadoEntradaCola
 import com.proyecto_final.triage.network.estadoConsulta.HospitalSeleccionadoResponse
 import com.proyecto_final.triage.network.estadoConsulta.TipoPausaCola
+import com.proyecto_final.triage.notificaciones.SeguimientoConsulta
+import com.proyecto_final.triage.notificaciones.rememberSolicitudPermisoNotificaciones
 import com.proyecto_final.triage.platform.PlatformMap
 import com.proyecto_final.triage.utils.calcularMinutosRestantes
 import com.proyecto_final.triage.utils.formatHora
@@ -100,9 +102,24 @@ class ConsultaActivaScreen : Screen {
 
         val homeViewModel = navigatorViewModel { HomeViewModel() }
 
+        val solicitarPermisoNotificaciones = rememberSolicitudPermisoNotificaciones()
+
         LaunchedEffect(Unit) {
 
             viewModel.cargarEstado()
+        }
+
+        // Con el paciente en la fila, pedimos permiso para avisarle cuando lo llamen.
+        LaunchedEffect(Unit) {
+            solicitarPermisoNotificaciones()
+        }
+
+        // Si el hospital cambia el estado (te llaman, te marcan ausente...), la pantalla se
+        // actualiza al instante, sin esperar al próximo refresco.
+        LaunchedEffect(Unit) {
+            SeguimientoConsulta.cambios.collect {
+                viewModel.cargarEstado(mostrarLoading = false)
+            }
         }
 
         LaunchedEffect(Unit) {

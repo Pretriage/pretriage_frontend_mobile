@@ -12,15 +12,19 @@ import kotlinx.serialization.json.Json
 
 sealed class ConsultaSseEvento {
     data class TiempoEstimado(val data: TiempoEstimadoAtencionResponse) : ConsultaSseEvento()
+    data class CambioEstado(val data: CambioEstadoConsultaDTO) : ConsultaSseEvento()
     data object Heartbeat : ConsultaSseEvento()
 }
 
 /**
- * Solo tiene sentido suscribirse mientras estadoEntradaCola == "EN_COLA".
- * El backend deja de mandar "tiempo-estimado" (y solo manda heartbeat)
- * apenas la entrada sale de EN_COLA, sin avisar del cambio de estado.
- * Para enterarte de LLAMADO / CANCELADA / etc seguís necesitando
- * obtenerEstadoConsulta() por polling o al volver a la pantalla.
+ * Canal en tiempo real de una consulta activa.
+ *
+ * - "tiempo-estimado": llega mientras la consulta está EN_COLA.
+ * - "estado-consulta": llega al conectarse (estado actual) y cada vez que el hospital cambia
+ *   el estado (llamado, ausente al llamado, cancelación por vencimiento, inicio y fin de la atención).
+ *
+ * Se reconecta solo si se corta. Cuando la consulta termina (FINALIZADA o CANCELADA) el flujo se
+ * completa y deja de reconectarse.
  */
 object ConsultaSseClient {
 
@@ -28,9 +32,9 @@ object ConsultaSseClient {
     private const val RECONNECT_DELAY_MS = 3000L
 
     fun suscribirse(consultaId: Long): Flow<ConsultaSseEvento> = callbackFlow {
-        var activo = true
+        var terminada = false
 
-        while (activo) {
+        while (!terminada) {
             try {
                 httpClient.sse(
                     urlString = "${AppConfig.baseUrl}/api/atencion/tiempos/suscribirse/$consultaId"
@@ -42,6 +46,13 @@ object ConsultaSseClient {
                                 json.decodeFromString<TiempoEstimadoAtencionResponse>(data)
                             }.onSuccess { trySend(ConsultaSseEvento.TiempoEstimado(it)) }
 
+                            "estado-consulta" -> runCatching {
+                                json.decodeFromString<CambioEstadoConsultaDTO>(data)
+                            }.onSuccess { cambio ->
+                                trySend(ConsultaSseEvento.CambioEstado(cambio))
+                                if (cambio.esTerminal) terminada = true
+                            }
+
                             "heartbeat" -> trySend(ConsultaSseEvento.Heartbeat)
 
                             else -> Unit // evento desconocido, se ignora
@@ -51,10 +62,12 @@ object ConsultaSseClient {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                delay(RECONNECT_DELAY_MS)
+                // Se cortó la conexión: se reintenta abajo.
             }
+            if (!terminada) delay(RECONNECT_DELAY_MS)
         }
 
-        awaitClose { activo = false }
+        close()
+        awaitClose { }
     }
 }
