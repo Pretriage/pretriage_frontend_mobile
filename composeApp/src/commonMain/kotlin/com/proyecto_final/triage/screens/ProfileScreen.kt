@@ -2,6 +2,7 @@ package com.proyecto_final.triage.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -15,7 +16,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
@@ -27,6 +30,8 @@ import com.proyecto_final.triage.components.NextButton
 import com.proyecto_final.triage.components.SelectableOption
 import com.proyecto_final.triage.components.SelectableOptionsGrid
 import com.proyecto_final.triage.components.ScreenTitleBar
+import com.proyecto_final.triage.fotoperfil.ProfilePhotoDialogs
+import com.proyecto_final.triage.fotoperfil.rememberProfilePhotoState
 import com.proyecto_final.triage.network.PerfilResponse
 import com.proyecto_final.triage.theme.AppTheme
 import com.proyecto_final.triage.utils.esCaba
@@ -47,8 +52,17 @@ class ProfileScreen : Screen {
             viewModel.cargarPerfil()
         }
 
+        // La foto se guarda solo en el dispositivo, una por usuario.
+        val userKey = (state as? ProfileState.Success)?.perfil?.let {
+            "${it.tipoDocumento}_${it.numeroDocumento}"
+        }
+        val photoState = rememberProfilePhotoState(userKey)
+        ProfilePhotoDialogs(photoState)
+
         ProfileContent(
             state = state,
+            fotoPerfil = photoState.photo,
+            onFotoClick = photoState::openOptions,
             onRetry = { viewModel.cargarPerfil() },
             onEditProfile = { perfil ->
                 navigator?.push(
@@ -105,6 +119,8 @@ fun ProfilePreview() {
 @Composable
 fun ProfileContent(
     state: ProfileState,
+    fotoPerfil: ImageBitmap? = null,
+    onFotoClick: () -> Unit = {},
     onRetry: () -> Unit,
     onEditProfile: (PerfilResponse) -> Unit,
     onHealthPlan: () -> Unit,
@@ -153,7 +169,9 @@ fun ProfileContent(
                 val placeHolderText = "Sin especificar"
 
                 ProfileHeaderCard(
-                    nombreCompleto = "${perfil.nombre} ${perfil.apellido}"
+                    nombreCompleto = "${perfil.nombre} ${perfil.apellido}",
+                    foto = fotoPerfil,
+                    onFotoClick = onFotoClick
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -311,7 +329,11 @@ private fun ProfileError(
 }
 
 @Composable
-private fun ProfileHeaderCard(nombreCompleto: String) {
+private fun ProfileHeaderCard(
+    nombreCompleto: String,
+    foto: ImageBitmap?,
+    onFotoClick: () -> Unit
+) {
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFD6EAF8)),
@@ -333,16 +355,51 @@ private fun ProfileHeaderCard(nombreCompleto: String) {
                 Box(
                     modifier = Modifier
                         .size(72.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF5BB8D4)),
-                    contentAlignment = Alignment.Center
+                        .clickable(
+                            onClickLabel = "Cambiar foto de perfil",
+                            role = Role.Button,
+                            onClick = onFotoClick
+                        )
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(40.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .background(Color(0xFF5BB8D4)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (foto != null) {
+                            Image(
+                                bitmap = foto,
+                                contentDescription = "Foto de perfil",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = "Sin foto de perfil",
+                                tint = Color.White,
+                                modifier = Modifier.size(40.dp)
+                            )
+                        }
+                    }
+                    // Indicador de que el círculo se puede tocar para cambiar la foto.
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(Color.White),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PhotoCamera,
+                            contentDescription = null,
+                            tint = Color(0xFF5BB8D4),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
