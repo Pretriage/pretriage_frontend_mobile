@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import kotlinx.coroutines.flow.filterNotNull
 
 class MyStudiesScreen : Screen {
 
@@ -78,20 +79,25 @@ fun MyStudiesContent(   onBack: () -> Unit,
                         viewModel: StudiesViewModel
 ) {
     val state by viewModel.state.collectAsState()
-    val mensajeExito by viewModel.mensajeExito.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
         viewModel.cargarEstudios()
     }
 
-    LaunchedEffect(mensajeExito) {
-        mensajeExito?.let { mensaje ->
+    LaunchedEffect(Unit) {
+        viewModel.mensajeExito.filterNotNull().collect { mensaje ->
+            // Se limpia ANTES de mostrarlo: showSnackbar espera hasta que se oculta,
+            // y si el usuario sale de la pantalla en ese lapso el efecto se cancela.
+            // Limpiando después, el mensaje quedaba en el ViewModel (compartido por
+            // toda la app) y volvía a aparecer al regresar, aunque el estudio ya no estuviera.
+            // Se usa collect (y no LaunchedEffect(mensajeExito)) para que limpiar no
+            // reinicie el efecto y corte el snackbar recién mostrado.
+            viewModel.limpiarMensajeExito()
             snackbarHostState.showSnackbar(
                 message = mensaje,
                 duration = SnackbarDuration.Short
             )
-            viewModel.limpiarMensajeExito()
         }
     }
 
