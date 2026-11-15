@@ -290,7 +290,11 @@ fun HealthPlanContent(
 
         if (credencialState is CredencialState.Success) {
 
-            credencial = credencialVacia()
+            // Se vuelve a los datos de la página actual (no a una credencial vacía):
+            // si la lista recargada es igual a la anterior, el `remember` de arriba no
+            // se recalcula y la credencial quedaría con idCredencial = 0, haciendo
+            // fallar la siguiente edición o eliminación.
+            credencial = credencialParaPagina(pagerState.currentPage, credenciales)
 
             showForm = false
             showErrors = false
@@ -967,9 +971,12 @@ fun HealthPlanContent(
 
                         pendingAction = PendingAction.Eliminar
 
-                        viewModel.eliminarCredencial(
-                            credencial.idCredencial
-                        )
+                        // El id sale de la lista del backend, no del borrador del formulario.
+                        val idAEliminar =
+                            credenciales.getOrNull(pagerState.currentPage)?.idCredencial
+                                ?: credencial.idCredencial
+
+                        viewModel.eliminarCredencial(idAEliminar)
 
                         showDeleteDialog = false
                     }
